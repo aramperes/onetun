@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -12,6 +12,9 @@ use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 use boringtun::device::peer::Peer;
 use boringtun::noise::{Tunn, TunnResult};
 use clap::{App, Arg};
+use packet::ip::Protocol;
+use packet::Builder;
+use smoltcp::wire::Ipv4Packet;
 
 use crate::config::Config;
 
@@ -46,7 +49,8 @@ fn main() -> anyhow::Result<()> {
 
     let endpoint_addr = config.endpoint_addr;
 
-    let peer_ip = config.source_peer_ip;
+    let source_peer_addr = SocketAddr::new(config.source_peer_ip, 1234);
+    let destination_addr = config.dest_addr;
 
     let close = Arc::new(AtomicBool::new(false));
 
@@ -74,23 +78,15 @@ fn main() -> anyhow::Result<()> {
                 }
             };
 
-            debug!("Got packet from endpoint sock: {} bytes", n);
-
-            match peer.decapsulate(None, &recv_buf[..n], &mut send_buf) {
+            let data = &recv_buf[..n];
+            match peer.decapsulate(None, data, &mut send_buf) {
                 TunnResult::WriteToNetwork(packet) => {
-                    send_mocked_packet(packet, endpoint_sock.clone(), endpoint_addr, peer_ip)
-                        .unwrap();
+                    send_packet(packet, endpoint_sock.clone(), endpoint_addr).unwrap();
                     loop {
                         let mut send_buf = [0u8; MAX_PACKET];
                         match peer.decapsulate(None, &[], &mut send_buf) {
                             TunnResult::WriteToNetwork(packet) => {
-                                send_mocked_packet(
-                                    packet,
-                                    endpoint_sock.clone(),
-                                    endpoint_addr,
-                                    peer_ip,
-                                )
-                                .unwrap();
+                                send_packet(packet, endpoint_sock.clone(), endpoint_addr).unwrap();
                             }
                             _ => {
                                 break;
@@ -130,14 +126,25 @@ fn main() -> anyhow::Result<()> {
                 }
             };
 
-            debug!("Got packet from source sock: {} bytes", n);
+            let data = &recv_buf[..n];
 
-            match peer.encapsulate(&recv_buf[..n], &mut send_buf) {
+            // TODO: Support TCP
+            let ip_packet =
+                wrap_data_packet(Protocol::Udp, data, source_peer_addr, destination_addr)
+                    .expect("Failed to wrap data packet");
+
+            debug!("Crafted IP packet: {:#?}", ip_packet);
+
+            match peer.encapsulate(ip_packet.as_slice(), &mut send_buf) {
                 TunnResult::WriteToNetwork(packet) => {
-                    send_mocked_packet(packet, endpoint_sock.clone(), endpoint_addr, peer_ip)
-                        .unwrap();
+                    send_packet(packet, endpoint_sock.clone(), endpoint_addr).unwrap();
                 }
-                _ => {}
+                TunnResult::Err(e) => {
+                    error!("Failed to encapsulate: {:?}", e);
+                }
+                other => {
+                    error!("Unexpected TunnResult during encapsulation: {:?}", other);
+                }
             }
         }));
     }
@@ -156,8 +163,7 @@ fn main() -> anyhow::Result<()> {
             let mut send_buf = [0u8; MAX_PACKET];
             match peer.update_timers(&mut send_buf) {
                 TunnResult::WriteToNetwork(packet) => {
-                    send_mocked_packet(packet, endpoint_sock.clone(), endpoint_addr, peer_ip)
-                        .unwrap();
+                    send_packet(packet, endpoint_sock.clone(), endpoint_addr).unwrap();
                 }
                 _ => {}
             }
@@ -178,14 +184,67 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn send_mocked_packet(
+// wraps a UDP packet with an IP layer packet with the wanted source & destination addresses
+fn wrap_data_packet(
+    proto: Protocol,
+    data: &[u8],
+    source: SocketAddr,
+    destination: SocketAddr,
+) -> anyhow::Result<Vec<u8>> {
+    match source {
+        SocketAddr::V4(source) => {
+            let mut builder = packet::ip::v4::Builder::default();
+
+            builder = builder
+                .source(*source.ip())
+                .with_context(|| "Failed to set packet source")?;
+            builder = builder
+                .payload(data)
+                .with_context(|| "Failed to set packet payload")?;
+            builder = builder
+                .protocol(proto)
+                .with_context(|| "Failed to set packet protocol")?;
+            builder = builder
+                .dscp(0)
+                .with_context(|| "Failed to set packet dcsp")?;
+            builder = builder
+                .id(12345)
+                .with_context(|| "Failed to set packet ID")?;
+            builder = builder
+                .ttl(16)
+                .with_context(|| "Failed to set packet TTL")?;
+
+            match destination {
+                SocketAddr::V4(destination) => {
+                    builder = builder
+                        .destination(*destination.ip())
+                        .with_context(|| "Failed to set packet destination")?;
+                }
+                SocketAddr::V6(_) => {
+                    return Err(anyhow::anyhow!(
+                        "cannot use ipv6 destination with ipv4 source"
+                    ));
+                }
+            }
+
+            builder
+                .build()
+                .with_context(|| "Failed to build ipv4 packet")
+        }
+        SocketAddr::V6(_) => {
+            todo!("ipv6 support")
+        }
+    }
+}
+
+fn send_packet(
     packet: &[u8],
     endpoint_socket: Arc<UdpSocket>,
     endpoint_addr: SocketAddr,
-    peer_addr: IpAddr,
 ) -> anyhow::Result<usize> {
     // todo: replace addr with peer_addr
-    endpoint_socket
+    let size = endpoint_socket
         .send_to(packet, endpoint_addr)
-        .with_context(|| "Failed to send mocked packet")
+        .with_context(|| "Failed to send packet")?;
+    Ok(size)
 }

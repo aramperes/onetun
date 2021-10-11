@@ -11,3 +11,5 @@ clap = { version = "2.33", default-features = false, features = ["suggestions"] 
 log = "0.4"
 pretty_env_logger = "0.3"
 anyhow = "1"
+smoltcp = "0.7.5"
+packet = "0.1.4"
