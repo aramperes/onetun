@@ -177,6 +177,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06ed27e177f16d65f0f0c22a213e17c696ace5dd64b14258b52f9417ccb52db4"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d82cfc11ce7f2c3faef78d8a684447b40d503d9681acebed6cb728d45940c4db"
+dependencies = [
+ "cfg-if",
+ "lazy_static",
+]
+
+[[package]]
 name = "daemonize"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -278,15 +298,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hwaddr"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e414433a9e4338f4e87fa29d0670c883a5e73e7955c45f4a49130c0aa992c85b"
-dependencies = [
- "phf",
-]
-
-[[package]]
 name = "instant"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -378,9 +389,9 @@ dependencies = [
 
 [[package]]
 name = "managed"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c75de51135344a4f8ed3cfe2720dc27736f7711989703a0b43aadf3753c55577"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
 name = "memchr"
@@ -439,22 +450,10 @@ dependencies = [
  "anyhow",
  "boringtun",
  "clap",
+ "crossbeam-channel",
  "log",
- "packet",
  "pretty_env_logger",
  "smoltcp",
-]
-
-[[package]]
-name = "packet"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c136c7ad0619ed4f88894aecf66ad86c80683e7b5d707996e6a3a7e0e3916944"
-dependencies = [
- "bitflags",
- "byteorder",
- "hwaddr",
- "thiserror",
 ]
 
 [[package]]
@@ -480,24 +479,6 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "winapi",
-]
-
-[[package]]
-name = "phf"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dfb61232e34fcb633f43d12c58f83c1df82962dcdfa565a4e866ffc17dafe12"
-dependencies = [
- "phf_shared",
-]
-
-[[package]]
-name = "phf_shared"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c00cf8b9eafe68dde5e9eaa2cef8ee84a9336a47d566ec55ca16589633b65af7"
-dependencies = [
- "siphasher",
 ]
 
 [[package]]
@@ -614,12 +595,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
-name = "siphasher"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "533494a8f9b724d33625ab53c6c4800f7cc445895924a8ef649222dcb76e938b"
-
-[[package]]
 name = "slog"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -646,9 +621,8 @@ checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 
 [[package]]
 name = "smoltcp"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e4a069bef843d170df47e7c0a8bf8d037f217d9f5b325865acc3e466ffe40d3"
+version = "0.8.0"
+source = "git+https://github.com/smoltcp-rs/smoltcp?branch=master#35e833e33dfd3e4efc3eb7d5de06bec17c54b011"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -707,26 +681,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
-]
-
-[[package]]
-name = "thiserror"
-version = "1.0.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "854babe52e4df1653706b98fcfc05843010039b406875930a70e4d9644e5c417"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "1.0.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa32fd3f627f367fe16f893e2597ae3c05020f8bba2666a4e6ea73d377e5714b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
