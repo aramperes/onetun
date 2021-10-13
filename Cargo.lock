@@ -207,6 +207,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
+dependencies = [
+ "cfg-if",
+ "num_cpus",
+]
+
+[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -429,6 +439,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_cpus"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
+dependencies = [
+ "hermit-abi",
+ "libc",
+]
+
+[[package]]
 name = "object"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -451,6 +471,7 @@ dependencies = [
  "boringtun",
  "clap",
  "crossbeam-channel",
+ "dashmap",
  "log",
  "pretty_env_logger",
  "smoltcp",

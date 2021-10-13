@@ -1,9 +1,7 @@
-use std::collections::VecDeque;
-
-use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, Medium};
+use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
-use smoltcp::wire::{Ipv4Packet, Ipv4Repr};
 
+#[derive(Clone)]
 pub struct VirtualIpDevice {
     /// Channel for packets sent by the interface.
     ip_tx: crossbeam_channel::Sender<Vec<u8>>,
