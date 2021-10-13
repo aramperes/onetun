@@ -10,6 +10,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 
 use crate::config::Config;
 use crate::port_pool::PortPool;
+use crate::wg::WireGuardTunnel;
 
 pub mod client;
 pub mod config;
@@ -23,22 +24,15 @@ pub const MAX_PACKET: usize = 65536;
 async fn main() -> anyhow::Result<()> {
     pretty_env_logger::init_custom_env("ONETUN_LOG");
     let config = Config::from_args().with_context(|| "Failed to read config")?;
-    let peer = Arc::new(wg::create_tunnel(&config)?);
     let port_pool = Arc::new(PortPool::new());
 
-    // endpoint_addr: The address of the public WireGuard endpoint; UDP.
-    let endpoint_addr = config.endpoint_addr;
-
-    // wireguard_udp: The UDP socket used to communicate with the public WireGuard endpoint.
-    let wireguard_udp = UdpSocket::bind("0.0.0.0:0")
+    let wg = WireGuardTunnel::new(&config)
         .await
-        .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
-    let wireguard_udp = Arc::new(wireguard_udp);
+        .with_context(|| "Failed to initialize WireGuard tunnel")?;
+    let wg = Arc::new(wg);
 
     // Start routine task for WireGuard
-    tokio::spawn(
-        async move { wg::routine(peer.clone(), wireguard_udp.clone(), endpoint_addr).await },
-    );
+    tokio::spawn(async move { Arc::clone(&wg).routine_task().await });
 
     info!(
         "Tunnelling [{}]->[{}] (via [{}] as peer {})",
