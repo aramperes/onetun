@@ -6,7 +6,7 @@ use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 use clap::{App, Arg};
 
 #[derive(Clone, Debug)]
-pub(crate) struct Config {
+pub struct Config {
     pub(crate) source_addr: SocketAddr,
     pub(crate) dest_addr: SocketAddr,
     pub(crate) private_key: Arc<X25519SecretKey>,
