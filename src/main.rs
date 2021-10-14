@@ -10,7 +10,7 @@ use anyhow::Context;
 use smoltcp::iface::InterfaceBuilder;
 use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::wire::{IpAddress, IpCidr};
-use tokio::io::Interest;
+use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::error::TryRecvError;
 
@@ -158,85 +158,76 @@ async fn handle_tcp_proxy_connection(
     }
 
     loop {
-        let ready = socket
-            .ready(Interest::READABLE | Interest::WRITABLE)
-            .await
-            .with_context(|| "Failed to wait for TCP proxy socket readiness")?;
-
         if abort.load(Ordering::Relaxed) {
             break;
         }
 
-        if ready.is_readable() {
-            let mut buffer = [0u8; MAX_PACKET];
-
-            match socket.try_read(&mut buffer) {
-                Ok(size) if size > 0 => {
-                    let data = &buffer[..size];
-                    debug!(
-                        "[{}] Read {} bytes of TCP data from real client",
-                        virtual_port, size
-                    );
-                    match data_to_real_server_tx.send(data.to_vec()).await {
+        tokio::select! {
+            readable_result = socket.readable() => {
+                match readable_result {
+                    Ok(_) => {
+                        let mut buffer = vec![];
+                        match socket.try_read_buf(&mut buffer) {
+                            Ok(size) if size > 0 => {
+                                let data = &buffer[..size];
+                                debug!(
+                                    "[{}] Read {} bytes of TCP data from real client",
+                                    virtual_port, size
+                                );
+                                match data_to_real_server_tx.send(data.to_vec()).await {
+                                    Err(e) => {
+                                        error!(
+                                            "[{}] Failed to dispatch data to virtual interface: {:?}",
+                                            virtual_port, e
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                continue;
+                            }
+                            Err(e) => {
+                                error!(
+                                    "[{}] Failed to read from client TCP socket: {:?}",
+                                    virtual_port, e
+                                );
+                                break;
+                            }
+                            _ => {
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("[{}] Failed to check if readable: {:?}", virtual_port, e);
+                        break;
+                    }
+                }
+            }
+            data_recv_result = data_to_real_client_rx.recv() => {
+                match data_recv_result {
+                    Some(data) => match socket.try_write(&data) {
+                        Ok(size) => {
+                            debug!(
+                                "[{}] Wrote {} bytes of TCP data to real client",
+                                virtual_port, size
+                            );
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            continue;
+                        }
                         Err(e) => {
                             error!(
-                                "[{}] Failed to dispatch data to virtual interface: {:?}",
+                                "[{}] Failed to write to client TCP socket: {:?}",
                                 virtual_port, e
                             );
                         }
-                        _ => {}
-                    }
+                    },
+                    None => continue,
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(e) => {
-                    error!(
-                        "[{}] Failed to read from client TCP socket: {:?}",
-                        virtual_port, e
-                    );
-                    break;
-                }
-                _ => {}
             }
         }
-
-        if ready.is_writable() {
-            // Flush the data_to_real_client_rx channel
-            match data_to_real_client_rx.try_recv() {
-                Ok(data) => match socket.try_write(&data) {
-                    Ok(size) => {
-                        debug!(
-                            "[{}] Wrote {} bytes of TCP data to real client",
-                            virtual_port, size
-                        );
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        continue;
-                    }
-                    Err(e) => {
-                        error!(
-                            "[{}] Failed to write to client TCP socket: {:?}",
-                            virtual_port, e
-                        );
-                    }
-                },
-                Err(e) => match e {
-                    TryRecvError::Empty => {
-                        // Nothing else to consume in the data channel.
-                    }
-                    TryRecvError::Disconnected => {
-                        // Channel is broken, probably terminated.
-                    }
-                },
-            }
-        }
-
-        if ready.is_read_closed() || ready.is_write_closed() {
-            break;
-        }
-
-        tokio::time::sleep(Duration::from_millis(1)).await;
     }
 
     trace!("[{}] TCP socket handler task terminated", virtual_port);

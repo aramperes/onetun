@@ -14,9 +14,7 @@ impl PortPool {
     pub fn new() -> Self {
         let inner = lockfree::queue::Queue::default();
         PORT_RANGE.for_each(|p| inner.push(p) as ());
-        Self {
-            inner,
-        }
+        Self { inner }
     }
 
     pub fn next(&self) -> anyhow::Result<u16> {
