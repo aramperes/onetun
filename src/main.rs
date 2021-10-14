@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use tokio::io::Interest;
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::config::Config;
 use crate::port_pool::PortPool;
@@ -31,24 +31,38 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| "Failed to initialize WireGuard tunnel")?;
     let wg = Arc::new(wg);
 
-    // Start routine task for WireGuard
-    tokio::spawn(async move { Arc::clone(&wg).routine_task().await });
+    {
+        // Start routine task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(async move { wg.routine_task().await });
+    }
+
+    {
+        // Start consumption task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(async move { wg.consume_task().await });
+    }
 
     info!(
         "Tunnelling [{}]->[{}] (via [{}] as peer {})",
         &config.source_addr, &config.dest_addr, &config.endpoint_addr, &config.source_peer_ip
     );
 
-    tcp_proxy_server(config.source_addr.clone(), port_pool.clone()).await
+    tcp_proxy_server(config.source_addr.clone(), port_pool.clone(), wg).await
 }
 
 /// Starts the server that listens on TCP connections.
-async fn tcp_proxy_server(listen_addr: SocketAddr, port_pool: Arc<PortPool>) -> anyhow::Result<()> {
+async fn tcp_proxy_server(
+    listen_addr: SocketAddr,
+    port_pool: Arc<PortPool>,
+    wg: Arc<WireGuardTunnel>,
+) -> anyhow::Result<()> {
     let listener = TcpListener::bind(listen_addr)
         .await
         .with_context(|| "Failed to listen on TCP proxy server")?;
 
     loop {
+        let wg = wg.clone();
         let port_pool = port_pool.clone();
         let (socket, peer_addr) = listener
             .accept()
@@ -73,7 +87,7 @@ async fn tcp_proxy_server(listen_addr: SocketAddr, port_pool: Arc<PortPool>) -> 
 
         tokio::spawn(async move {
             let port_pool = Arc::clone(&port_pool);
-            let result = handle_tcp_proxy_connection(socket, virtual_port).await;
+            let result = handle_tcp_proxy_connection(socket, virtual_port, wg).await;
 
             if let Err(e) = result {
                 error!(
@@ -91,7 +105,11 @@ async fn tcp_proxy_server(listen_addr: SocketAddr, port_pool: Arc<PortPool>) -> 
 }
 
 /// Handles a new TCP connection with its assigned virtual port.
-async fn handle_tcp_proxy_connection(socket: TcpStream, virtual_port: u16) -> anyhow::Result<()> {
+async fn handle_tcp_proxy_connection(
+    socket: TcpStream,
+    virtual_port: u16,
+    wg: Arc<WireGuardTunnel>,
+) -> anyhow::Result<()> {
     loop {
         let ready = socket
             .ready(Interest::READABLE | Interest::WRITABLE)

@@ -1,7 +1,7 @@
-use anyhow::Context;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
+use anyhow::Context;
 use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 use clap::{App, Arg};
 
@@ -13,6 +13,7 @@ pub struct Config {
     pub(crate) endpoint_public_key: Arc<X25519PublicKey>,
     pub(crate) endpoint_addr: SocketAddr,
     pub(crate) source_peer_ip: IpAddr,
+    pub(crate) keepalive_seconds: Option<u16>,
 }
 
 impl Config {
@@ -54,7 +55,13 @@ impl Config {
                     .takes_value(true)
                     .long("source-peer-ip")
                     .env("ONETUN_SOURCE_PEER_IP")
-                    .help("The source IP to identify this peer as (local). Example: 192.168.4.3")
+                    .help("The source IP to identify this peer as (local). Example: 192.168.4.3"),
+                Arg::with_name("keep-alive")
+                    .required(false)
+                    .takes_value(true)
+                    .long("keep-alive")
+                    .env("ONETUN_KEEP_ALIVE")
+                    .help("Configures a persistent keep-alive for the WireGuard tunnel, in seconds.")
             ]).get_matches();
 
         Ok(Self {
@@ -74,6 +81,8 @@ impl Config {
                 .with_context(|| "Invalid endpoint address")?,
             source_peer_ip: parse_ip(matches.value_of("source-peer-ip"))
                 .with_context(|| "Invalid source peer IP")?,
+            keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
+                .with_context(|| "Invalid keep-alive value")?,
         })
     }
 }
@@ -102,4 +111,18 @@ fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
         .parse::<X25519PublicKey>()
         .map_err(|e| anyhow::anyhow!("{}", e))
         .with_context(|| "Invalid public key")
+}
+
+fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
+    if let Some(s) = s {
+        let parsed: u16 = s.parse().with_context(|| {
+            format!(
+                "Keep-alive must be a number between 0 and {} seconds",
+                u16::MAX
+            )
+        })?;
+        Ok(Some(parsed))
+    } else {
+        Ok(None)
+    }
 }
