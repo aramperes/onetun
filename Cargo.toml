@@ -16,3 +16,4 @@ smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "master" }
 dashmap = "4.0.2"
 tokio = { version = "1", features = ["full"] }
 lockfree = "0.5.1"
+futures = "0.3.17"

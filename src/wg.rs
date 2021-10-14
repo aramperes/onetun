@@ -21,6 +21,7 @@ pub struct WireGuardTunnel {
     endpoint: SocketAddr,
     /// Broadcast sender for received IP packets.
     ip_broadcast_tx: tokio::sync::broadcast::Sender<Vec<u8>>,
+    ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
 }
 
 impl WireGuardTunnel {
@@ -31,13 +32,15 @@ impl WireGuardTunnel {
             .await
             .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
         let endpoint = config.endpoint_addr;
-        let (ip_broadcast_tx, _) = tokio::sync::broadcast::channel(BROADCAST_CAPACITY);
+        let (ip_broadcast_tx, ip_broadcast_rx) =
+            tokio::sync::broadcast::channel(BROADCAST_CAPACITY);
 
         Ok(Self {
             peer,
             udp,
             endpoint,
             ip_broadcast_tx,
+            ip_broadcast_rx,
         })
     }
 
@@ -178,7 +181,7 @@ impl WireGuardTunnel {
                         }
                         Err(e) => {
                             error!(
-                                "Failed to broadcast received IP packet to recipients: {:?}",
+                                "Failed to broadcast received IP packet to recipients: {}",
                                 e
                             );
                         }

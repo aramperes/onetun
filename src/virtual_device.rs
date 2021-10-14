@@ -1,19 +1,17 @@
+use crate::wg::WireGuardTunnel;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct VirtualIpDevice {
-    /// Channel for packets sent by the interface.
-    ip_tx: crossbeam_channel::Sender<Vec<u8>>,
-    ip_rx: crossbeam_channel::Receiver<Vec<u8>>,
+    /// Tunnel to send IP packets to.
+    wg: Arc<WireGuardTunnel>,
 }
 
 impl VirtualIpDevice {
-    pub fn new(
-        ip_tx: crossbeam_channel::Sender<Vec<u8>>,
-        ip_rx: crossbeam_channel::Receiver<Vec<u8>>,
-    ) -> Self {
-        Self { ip_tx, ip_rx }
+    pub fn new(wg: Arc<WireGuardTunnel>) -> Self {
+        Self { wg }
     }
 }
 
@@ -22,22 +20,21 @@ impl<'a> Device<'a> for VirtualIpDevice {
     type TxToken = TxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        if !self.ip_rx.is_empty() {
-            let buffer = self.ip_rx.recv().expect("failed to read ip_rx");
-            Some((
-                RxToken { buffer },
-                TxToken {
-                    ip_tx: self.ip_tx.clone(),
+        let mut consumer = self.wg.subscribe();
+        match consumer.try_recv() {
+            Ok(buffer) => Some((
+                Self::RxToken { buffer },
+                Self::TxToken {
+                    wg: self.wg.clone(),
                 },
-            ))
-        } else {
-            None
+            )),
+            Err(_) => None,
         }
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {
         Some(TxToken {
-            ip_tx: self.ip_tx.clone(),
+            wg: self.wg.clone(),
         })
     }
 
@@ -65,10 +62,10 @@ impl smoltcp::phy::RxToken for RxToken {
 
 #[doc(hidden)]
 pub struct TxToken {
-    ip_tx: crossbeam_channel::Sender<Vec<u8>>,
+    wg: Arc<WireGuardTunnel>,
 }
 
-impl<'a> smoltcp::phy::TxToken for TxToken {
+impl smoltcp::phy::TxToken for TxToken {
     fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> smoltcp::Result<R>
     where
         F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
@@ -76,9 +73,12 @@ impl<'a> smoltcp::phy::TxToken for TxToken {
         let mut buffer = Vec::new();
         buffer.resize(len, 0);
         let result = f(&mut buffer);
-        self.ip_tx
-            .send(buffer.clone())
-            .expect("failed to send to ip_tx");
+        match futures::executor::block_on(self.wg.send_ip_packet(&buffer)) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Failed to send IP packet to WireGuard endpoint: {:?}", e);
+            }
+        }
         result
     }
 }
