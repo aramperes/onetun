@@ -46,6 +46,7 @@ impl WireGuardTunnel {
 
     /// Encapsulates and sends an IP packet through to the WireGuard endpoint.
     pub async fn send_ip_packet(&self, packet: &[u8]) -> anyhow::Result<()> {
+        trace_ip_packet("Sending IP packet", packet);
         let mut send_buf = [0u8; MAX_PACKET];
         match self.peer.encapsulate(packet, &mut send_buf) {
             TunnResult::WriteToNetwork(packet) => {
@@ -109,7 +110,7 @@ impl WireGuardTunnel {
                 }
                 TunnResult::Done => {
                     // Sleep for a bit
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::time::sleep(Duration::from_millis(1)).await;
                 }
                 other => {
                     warn!("Unexpected WireGuard routine task state: {:?}", other);
@@ -132,7 +133,7 @@ impl WireGuardTunnel {
                 Err(e) => {
                     error!("Failed to read from WireGuard endpoint: {:?}", e);
                     // Sleep a little bit and try again
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::time::sleep(Duration::from_millis(1)).await;
                     continue;
                 }
             };
@@ -172,7 +173,7 @@ impl WireGuardTunnel {
                     );
 
                     // For debugging purposes: parse packet
-                    trace_ip_packet(packet);
+                    trace_ip_packet("Received IP packet", packet);
 
                     // Broadcast IP packet
                     match self.ip_broadcast_tx.send(packet.to_vec()) {
@@ -206,17 +207,19 @@ impl WireGuardTunnel {
     }
 }
 
-fn trace_ip_packet(packet: &[u8]) {
+fn trace_ip_packet(message: &str, packet: &[u8]) {
     if log_enabled!(Level::Trace) {
         use smoltcp::wire::*;
 
         match IpVersion::of_packet(&packet) {
             Ok(IpVersion::Ipv4) => trace!(
-                "IPv4 packet received: {}",
+                "{}: {}",
+                message,
                 PrettyPrinter::<Ipv4Packet<&mut [u8]>>::new("", &packet)
             ),
             Ok(IpVersion::Ipv6) => trace!(
-                "IPv6 packet received: {}",
+                "{}: {}",
+                message,
                 PrettyPrinter::<Ipv6Packet<&mut [u8]>>::new("", &packet)
             ),
             _ => {}

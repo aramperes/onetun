@@ -29,7 +29,7 @@ pub const MAX_PACKET: usize = 65536;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::init_custom_env("ONETUN_LOG");
+    pretty_env_logger::try_init_timed_custom_env("ONETUN_LOG").unwrap();
     let config = Config::from_args().with_context(|| "Failed to read config")?;
     let port_pool = Arc::new(PortPool::new());
 
@@ -236,7 +236,7 @@ async fn handle_tcp_proxy_connection(
             break;
         }
 
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::sleep(Duration::from_millis(1)).await;
     }
 
     trace!("[{}] TCP socket handler task terminated", virtual_port);
@@ -370,11 +370,7 @@ async fn virtual_tcp_interface(
             }
         }
 
-        match virtual_interface.poll_delay(&socket_set, loop_start) {
-            None => tokio::time::sleep(Duration::from_millis(1)).await,
-            Some(smoltcp::time::Duration::ZERO) => {}
-            Some(delay) => tokio::time::sleep(Duration::from_millis(delay.millis())).await,
-        };
+        tokio::time::sleep(Duration::from_millis(1)).await;
     }
     trace!("[{}] Virtual interface task terminated", virtual_port);
     Ok(())
