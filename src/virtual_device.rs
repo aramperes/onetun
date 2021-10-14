@@ -3,15 +3,20 @@ use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct VirtualIpDevice {
     /// Tunnel to send IP packets to.
     wg: Arc<WireGuardTunnel>,
+    ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
 }
 
 impl VirtualIpDevice {
     pub fn new(wg: Arc<WireGuardTunnel>) -> Self {
-        Self { wg }
+        let ip_broadcast_rx = wg.subscribe();
+
+        Self {
+            wg,
+            ip_broadcast_rx,
+        }
     }
 }
 
@@ -20,8 +25,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     type TxToken = TxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let mut consumer = self.wg.subscribe();
-        match consumer.try_recv() {
+        match self.ip_broadcast_rx.try_recv() {
             Ok(buffer) => Some((
                 Self::RxToken { buffer },
                 Self::TxToken {
