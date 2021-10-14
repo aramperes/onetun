@@ -2,7 +2,9 @@
 extern crate log;
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use tokio::io::Interest;
@@ -110,11 +112,23 @@ async fn handle_tcp_proxy_connection(
     virtual_port: u16,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
+    let abort = Arc::new(AtomicBool::new(false));
+
+    // Spawn virtual interface
+    {
+        let abort = abort.clone();
+        tokio::spawn(async move { virtual_tcp_interface(virtual_port, wg, abort).await });
+    }
+
     loop {
         let ready = socket
             .ready(Interest::READABLE | Interest::WRITABLE)
             .await
             .with_context(|| "Failed to wait for TCP proxy socket readiness")?;
+
+        if abort.load(Ordering::Relaxed) {
+            break;
+        }
 
         if ready.is_readable() {
             let mut buffer = [0u8; MAX_PACKET];
@@ -132,7 +146,11 @@ async fn handle_tcp_proxy_connection(
                     continue;
                 }
                 Err(e) => {
-                    return Err(e).with_context(|| "Failed to read from real client TCP socket");
+                    error!(
+                        "[{}] Failed to read from client TCP socket: {:?}",
+                        virtual_port, e
+                    );
+                    break;
                 }
                 _ => {}
             }
@@ -141,7 +159,26 @@ async fn handle_tcp_proxy_connection(
         if ready.is_writable() {}
 
         if ready.is_read_closed() || ready.is_write_closed() {
-            return Ok(());
+            break;
         }
     }
+
+    trace!("[{}] TCP socket handler task terminated", virtual_port);
+    abort.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+async fn virtual_tcp_interface(
+    virtual_port: u16,
+    wg: Arc<WireGuardTunnel>,
+    abort: Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    loop {
+        if abort.load(Ordering::Relaxed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    trace!("[{}] Virtual interface task terminated", virtual_port);
+    Ok(())
 }
