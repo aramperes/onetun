@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use boringtun::noise::{Tunn, TunnResult};
+use log::Level;
 use tokio::net::UdpSocket;
 
 use crate::config::Config;
@@ -203,17 +204,19 @@ impl WireGuardTunnel {
 }
 
 fn trace_ip_packet(packet: &[u8]) {
-    use smoltcp::wire::*;
+    if log_enabled!(Level::Trace) {
+        use smoltcp::wire::*;
 
-    match IpVersion::of_packet(&packet) {
-        Ok(IpVersion::Ipv4) => trace!(
-            "IPv4 packet received: {}",
-            PrettyPrinter::<Ipv4Packet<&mut [u8]>>::new("", &packet)
-        ),
-        Ok(IpVersion::Ipv6) => trace!(
-            "IPv6 packet received: {}",
-            PrettyPrinter::<Ipv6Packet<&mut [u8]>>::new("", &packet)
-        ),
-        _ => {}
+        match IpVersion::of_packet(&packet) {
+            Ok(IpVersion::Ipv4) => trace!(
+                "IPv4 packet received: {}",
+                PrettyPrinter::<Ipv4Packet<&mut [u8]>>::new("", &packet)
+            ),
+            Ok(IpVersion::Ipv6) => trace!(
+                "IPv6 packet received: {}",
+                PrettyPrinter::<Ipv6Packet<&mut [u8]>>::new("", &packet)
+            ),
+            _ => {}
+        }
     }
 }

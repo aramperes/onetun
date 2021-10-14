@@ -9,6 +9,7 @@ use std::time::Duration;
 use anyhow::Context;
 use tokio::io::Interest;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::error::TryRecvError;
 
 use crate::config::Config;
 use crate::port_pool::PortPool;
@@ -112,12 +113,20 @@ async fn handle_tcp_proxy_connection(
     virtual_port: u16,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
+    // Abort signal for stopping the Virtual Interface
     let abort = Arc::new(AtomicBool::new(false));
+
+    // data_to_real_client_(tx/rx): This task reads the data from this mpsc channel to send back
+    // to the real client.
+    let (data_to_real_client_tx, mut data_to_real_client_rx) =
+        tokio::sync::mpsc::channel(1_000_000);
 
     // Spawn virtual interface
     {
         let abort = abort.clone();
-        tokio::spawn(async move { virtual_tcp_interface(virtual_port, wg, abort).await });
+        tokio::spawn(async move {
+            virtual_tcp_interface(virtual_port, wg, abort, data_to_real_client_tx).await
+        });
     }
 
     loop {
@@ -140,7 +149,7 @@ async fn handle_tcp_proxy_connection(
                         "[{}] Read {} bytes of TCP data from real client",
                         virtual_port, size
                     );
-                    trace!("[{}] {:?}", virtual_port, data);
+                    trace!("[{}] Read: {:?}", virtual_port, data);
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     continue;
@@ -156,11 +165,42 @@ async fn handle_tcp_proxy_connection(
             }
         }
 
-        if ready.is_writable() {}
+        if ready.is_writable() {
+            // Flush the data_to_real_client_rx channel
+            match data_to_real_client_rx.try_recv() {
+                Ok(data) => match socket.try_write(&data) {
+                    Ok(size) => {
+                        debug!(
+                            "[{}] Wrote {} bytes of TCP data to real client",
+                            virtual_port, size
+                        );
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        continue;
+                    }
+                    Err(e) => {
+                        error!(
+                            "[{}] Failed to write to client TCP socket: {:?}",
+                            virtual_port, e
+                        );
+                    }
+                },
+                Err(e) => match e {
+                    TryRecvError::Empty => {
+                        // Nothing else to consume in the data channel.
+                    }
+                    TryRecvError::Disconnected => {
+                        // Channel is broken, probably terminated.
+                    }
+                },
+            }
+        }
 
         if ready.is_read_closed() || ready.is_write_closed() {
             break;
         }
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
     trace!("[{}] TCP socket handler task terminated", virtual_port);
@@ -172,12 +212,35 @@ async fn virtual_tcp_interface(
     virtual_port: u16,
     wg: Arc<WireGuardTunnel>,
     abort: Arc<AtomicBool>,
+    data_to_real_client_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
 ) -> anyhow::Result<()> {
+    // Create a device and interface to simulate IP packets
+    // In essence:
+    // * TCP packets received from the 'real' client are 'sent' via the 'virtual client'
+    // * Those TCP packets generate IP packets, which are captured from the interface and sent to the WireGuardTunnel
+    // * IP packets received by the WireGuardTunnel (from the endpoint) are fed into this 'virtual interface'
+    // * The interface processes those IP packets and routes them to the 'virtual client' (the rest is discarded)
+    // * The TCP data read by the 'virtual client' is sent to the 'real' TCP client
     loop {
         if abort.load(Ordering::Relaxed) {
             break;
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Test START
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        match data_to_real_client_tx.send(b"pong".to_vec()).await {
+            Ok(_) => {
+                trace!("Wrote stuff in the data_to_real_client_tx")
+            }
+            Err(e) => {
+                trace!(
+                    "[{}] Virtual interface failed to dispatch data to parent task: {:?}",
+                    virtual_port,
+                    e
+                );
+            }
+        }
+        // Test END
     }
     trace!("[{}] Virtual interface task terminated", virtual_port);
     Ok(())
