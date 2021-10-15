@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_args().with_context(|| "Failed to read config")?;
     let port_pool = Arc::new(PortPool::new());
 
-    let wg = WireGuardTunnel::new(&config)
+    let wg = WireGuardTunnel::new(&config, port_pool.clone())
         .await
         .with_context(|| "Failed to initialize WireGuard tunnel")?;
     let wg = Arc::new(wg);
