@@ -77,12 +77,14 @@ impl smoltcp::phy::TxToken for TxToken {
         let mut buffer = Vec::new();
         buffer.resize(len, 0);
         let result = f(&mut buffer);
-        match futures::executor::block_on(self.wg.send_ip_packet(&buffer)) {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Failed to send IP packet to WireGuard endpoint: {:?}", e);
+        tokio::spawn(async move {
+            match self.wg.send_ip_packet(&buffer).await {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to send IP packet to WireGuard endpoint: {:?}", e);
+                }
             }
-        }
+        });
         result
     }
 }
