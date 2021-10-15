@@ -132,10 +132,11 @@ async fn handle_tcp_proxy_connection(
 
     // data_to_real_client_(tx/rx): This task reads the data from this mpsc channel to send back
     // to the real client.
-    let (data_to_real_client_tx, mut data_to_real_client_rx) =
-        tokio::sync::mpsc::channel(1_000_000);
+    let (data_to_real_client_tx, mut data_to_real_client_rx) = tokio::sync::mpsc::channel(1_000);
 
-    let (data_to_real_server_tx, data_to_real_server_rx) = tokio::sync::mpsc::channel(1_000_000);
+    // data_to_real_server_(tx/rx): This task sends the data received from the real client to the
+    // virtual interface (virtual server socket).
+    let (data_to_virtual_server_tx, data_to_virtual_server_rx) = tokio::sync::mpsc::channel(1_000);
 
     // Spawn virtual interface
     {
@@ -148,7 +149,7 @@ async fn handle_tcp_proxy_connection(
                 wg,
                 abort,
                 data_to_real_client_tx,
-                data_to_real_server_rx,
+                data_to_virtual_server_rx,
             )
             .await
         });
@@ -171,14 +172,11 @@ async fn handle_tcp_proxy_connection(
                                     "[{}] Read {} bytes of TCP data from real client",
                                     virtual_port, size
                                 );
-                                match data_to_real_server_tx.send(data.to_vec()).await {
-                                    Err(e) => {
-                                        error!(
-                                            "[{}] Failed to dispatch data to virtual interface: {:?}",
-                                            virtual_port, e
-                                        );
-                                    }
-                                    _ => {}
+                                if let Err(e) = data_to_virtual_server_tx.send(data.to_vec()).await {
+                                    error!(
+                                        "[{}] Failed to dispatch data to virtual interface: {:?}",
+                                        virtual_port, e
+                                    );
                                 }
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -239,7 +237,7 @@ async fn virtual_tcp_interface(
     wg: Arc<WireGuardTunnel>,
     abort: Arc<AtomicBool>,
     data_to_real_client_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    mut data_to_real_server_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    mut data_to_virtual_server_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 ) -> anyhow::Result<()> {
     // Create a device and interface to simulate IP packets
     // In essence:
@@ -326,11 +324,8 @@ async fn virtual_tcp_interface(
                 match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
                     Ok(data) => {
                         // Send it to the real client
-                        match data_to_real_client_tx.send(data).await {
-                            Err(e) => {
-                                error!("[{}] Failed to dispatch data from virtual client to real client: {:?}", virtual_port, e);
-                            }
-                            _ => {}
+                        if let Err(e) = data_to_real_client_tx.send(data).await {
+                            error!("[{}] Failed to dispatch data from virtual client to real client: {:?}", virtual_port, e);
                         }
                     }
                     Err(e) => {
@@ -343,17 +338,13 @@ async fn virtual_tcp_interface(
             }
             if client_socket.can_send() {
                 // Check if there is anything to send
-                match data_to_real_server_rx.try_recv() {
-                    Ok(data) => match client_socket.send_slice(&data) {
-                        Err(e) => {
-                            error!(
-                                "[{}] Failed to send slice via virtual client socket: {:?}",
-                                virtual_port, e
-                            );
-                        }
-                        _ => {}
-                    },
-                    Err(_) => {}
+                if let Ok(data) = data_to_virtual_server_rx.try_recv() {
+                    if let Err(e) = client_socket.send_slice(&data) {
+                        error!(
+                            "[{}] Failed to send slice via virtual client socket: {:?}",
+                            virtual_port, e
+                        );
+                    }
                 }
             }
         }

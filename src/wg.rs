@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,7 +17,7 @@ use crate::port_pool::PortPool;
 use crate::MAX_PACKET;
 
 /// The capacity of the broadcast channel for received IP packets.
-const BROADCAST_CAPACITY: usize = 1_000_000;
+const BROADCAST_CAPACITY: usize = 1_000;
 
 pub struct WireGuardTunnel {
     source_peer_ip: IpAddr,
@@ -189,7 +189,7 @@ impl WireGuardTunnel {
                     // For debugging purposes: parse packet
                     trace_ip_packet("Received IP packet", packet);
 
-                    match self.route(packet) {
+                    match self.route_ip_packet(packet) {
                         RouteResult::Broadcast => {
                             // Broadcast IP packet
                             if self.ip_broadcast_tx.receiver_count() > 1 {
@@ -238,41 +238,78 @@ impl WireGuardTunnel {
         .with_context(|| "Failed to initialize boringtun Tunn")
     }
 
-    fn route(&self, packet: &[u8]) -> RouteResult {
+    /// Makes a decision on the handling of an incoming IP packet.
+    fn route_ip_packet(&self, packet: &[u8]) -> RouteResult {
         match IpVersion::of_packet(packet) {
             Ok(IpVersion::Ipv4) => Ipv4Packet::new_checked(&packet)
                 .ok()
                 // Only care if the packet is destined for this tunnel
                 .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.protocol() {
-                    IpProtocol::Tcp => TcpPacket::new_checked(packet.payload()).ok().map(|tcp| {
-                        if self.port_pool.is_in_use(tcp.dst_port()) {
-                            RouteResult::Broadcast
-                        } else if tcp.rst() {
-                            RouteResult::Drop
-                        } else {
-                            // Port is not in use, but it's a TCP packet so we'll craft a RST.
-                            RouteResult::TcpReset(craft_tcp_rst_reply(
-                                IpVersion::Ipv4,
-                                packet.src_addr().into(),
-                                tcp.src_port(),
-                                packet.dst_addr().into(),
-                                tcp.dst_port(),
-                                tcp.ack_number(),
-                            ))
-                        }
-                    }),
+                    IpProtocol::Tcp => Some(
+                        self.route_tcp_segment(
+                            packet.src_addr().into(),
+                            packet.dst_addr().into(),
+                            packet.payload(),
+                        )
+                        // Note: Ipv4 drops invalid TCP packets when the specified protocol says that it should be TCP
+                        .unwrap_or(RouteResult::Drop),
+                    ),
                     // Unrecognized protocol, so we'll allow it.
                     _ => Some(RouteResult::Broadcast),
                 })
                 .flatten()
                 .unwrap_or(RouteResult::Drop),
-            // TODO: IPv6
+            Ok(IpVersion::Ipv6) => Ipv6Packet::new_checked(&packet)
+                .ok()
+                // Only care if the packet is destined for this tunnel
+                .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
+                .map(|packet| {
+                    self.route_tcp_segment(
+                        packet.src_addr().into(),
+                        packet.dst_addr().into(),
+                        packet.payload(),
+                    )
+                    // Note: Since Ipv6 doesn't inform us of the protocol at this layer,
+                    // we should broadcast unrecognized packets.
+                    .unwrap_or(RouteResult::Broadcast)
+                })
+                .unwrap_or(RouteResult::Drop),
             _ => RouteResult::Drop,
         }
     }
+
+    /// Makes a decision on the handling of an incoming TCP segment.
+    /// When the given segment is an invalid TCP packet, it returns `None`.
+    fn route_tcp_segment(
+        &self,
+        src_addr: IpAddress,
+        dst_addr: IpAddress,
+        segment: &[u8],
+    ) -> Option<RouteResult> {
+        TcpPacket::new_checked(segment).ok().map(|tcp| {
+            if self.port_pool.is_in_use(tcp.dst_port()) {
+                RouteResult::Broadcast
+            } else if tcp.rst() {
+                RouteResult::Drop
+            } else {
+                // Port is not in use, but it's a TCP packet so we'll craft a RST.
+                RouteResult::TcpReset(craft_tcp_rst_reply(
+                    IpVersion::Ipv4,
+                    src_addr,
+                    tcp.src_port(),
+                    dst_addr,
+                    tcp.dst_port(),
+                    tcp.ack_number(),
+                ))
+            }
+        })
+    }
 }
 
+/// Craft an IP packet containing a TCP RST segment, given an IP version,
+/// source address (the one to reply to), destination address (the one the reply comes from),
+/// and the ACK number received in the initiating TCP segment.
 fn craft_tcp_rst_reply(
     ip_version: IpVersion,
     source_addr: IpAddress,
