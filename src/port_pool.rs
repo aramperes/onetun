@@ -13,6 +13,12 @@ pub struct PortPool {
     taken: lockfree::set::Set<u16>,
 }
 
+impl Default for PortPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PortPool {
     pub fn new() -> Self {
         let inner = lockfree::queue::Queue::default();
@@ -28,7 +34,10 @@ impl PortPool {
             .inner
             .pop()
             .with_context(|| "Virtual port pool is exhausted")?;
-        self.taken.insert(port);
+        self.taken
+            .insert(port)
+            .ok()
+            .with_context(|| "Failed to insert taken")?;
         Ok(port)
     }
 

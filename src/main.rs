@@ -10,16 +10,13 @@ use anyhow::Context;
 use smoltcp::iface::InterfaceBuilder;
 use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::wire::{IpAddress, IpCidr};
-use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::error::TryRecvError;
 
 use crate::config::Config;
 use crate::port_pool::PortPool;
 use crate::virtual_device::VirtualIpDevice;
 use crate::wg::WireGuardTunnel;
 
-pub mod client;
 pub mod config;
 pub mod port_pool;
 pub mod virtual_device;

@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,8 +7,8 @@ use boringtun::noise::{Tunn, TunnResult};
 use log::Level;
 use smoltcp::phy::ChecksumCapabilities;
 use smoltcp::wire::{
-    IpAddress, IpProtocol, IpRepr, IpVersion, Ipv4Address, Ipv4Packet, Ipv4Repr, Ipv6Address,
-    Ipv6Packet, Ipv6Repr, TcpControl, TcpPacket, TcpRepr, TcpSeqNumber,
+    IpAddress, IpProtocol, IpVersion, Ipv4Packet, Ipv4Repr, Ipv6Packet, Ipv6Repr, TcpControl,
+    TcpPacket, TcpRepr, TcpSeqNumber,
 };
 use tokio::net::UdpSocket;
 
@@ -30,7 +30,7 @@ pub struct WireGuardTunnel {
     /// Broadcast sender for received IP packets.
     ip_broadcast_tx: tokio::sync::broadcast::Sender<Vec<u8>>,
     /// Placeholder so that the broadcaster doesn't close.
-    ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
+    _ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
     /// Port pool.
     port_pool: Arc<PortPool>,
 }
@@ -39,7 +39,7 @@ impl WireGuardTunnel {
     /// Initialize a new WireGuard tunnel.
     pub async fn new(config: &Config, port_pool: Arc<PortPool>) -> anyhow::Result<Self> {
         let source_peer_ip = config.source_peer_ip;
-        let peer = Self::create_tunnel(&config)?;
+        let peer = Self::create_tunnel(config)?;
         let udp = UdpSocket::bind("0.0.0.0:0")
             .await
             .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
@@ -53,7 +53,7 @@ impl WireGuardTunnel {
             udp,
             endpoint,
             ip_broadcast_tx,
-            ip_broadcast_rx,
+            _ip_broadcast_rx: ip_broadcast_rx,
             port_pool,
         })
     }
@@ -239,7 +239,7 @@ impl WireGuardTunnel {
     }
 
     fn route(&self, packet: &[u8]) -> RouteResult {
-        match IpVersion::of_packet(&packet) {
+        match IpVersion::of_packet(packet) {
             Ok(IpVersion::Ipv4) => Ipv4Packet::new_checked(&packet)
                 .ok()
                 // Only care if the packet is destined for this tunnel
@@ -363,7 +363,7 @@ fn trace_ip_packet(message: &str, packet: &[u8]) {
     if log_enabled!(Level::Trace) {
         use smoltcp::wire::*;
 
-        match IpVersion::of_packet(&packet) {
+        match IpVersion::of_packet(packet) {
             Ok(IpVersion::Ipv4) => trace!(
                 "{}: {}",
                 message,
