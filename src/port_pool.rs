@@ -6,6 +6,8 @@ const MIN_PORT: u16 = 32768;
 const MAX_PORT: u16 = 60999;
 const PORT_RANGE: Range<u16> = MIN_PORT..MAX_PORT;
 
+/// A pool of virtual ports available.
+/// This structure is thread-safe and lock-free; you can use it safely in an `Arc`.
 pub struct PortPool {
     /// Remaining ports
     inner: lockfree::queue::Queue<u16>,
@@ -20,6 +22,7 @@ impl Default for PortPool {
 }
 
 impl PortPool {
+    /// Initializes a new pool of virtual ports.
     pub fn new() -> Self {
         let inner = lockfree::queue::Queue::default();
         PORT_RANGE.for_each(|p| inner.push(p) as ());
@@ -29,6 +32,7 @@ impl PortPool {
         }
     }
 
+    /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
     pub fn next(&self) -> anyhow::Result<u16> {
         let port = self
             .inner
@@ -41,11 +45,13 @@ impl PortPool {
         Ok(port)
     }
 
+    /// Releases a port back into the pool.
     pub fn release(&self, port: u16) {
         self.inner.push(port);
         self.taken.remove(&port);
     }
 
+    /// Whether the given port is in use by a virtual interface.
     pub fn is_in_use(&self, port: u16) -> bool {
         self.taken.contains(&port)
     }

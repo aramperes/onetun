@@ -298,11 +298,20 @@ async fn virtual_tcp_interface(
     let _server_handle = socket_set.add(server_socket?);
     let client_handle = socket_set.add(client_socket?);
 
+    let mut graceful_shutdown = false;
+
     loop {
         let loop_start = smoltcp::time::Instant::now();
+        let forceful_shutdown = abort.load(Ordering::Relaxed);
 
-        if abort.load(Ordering::Relaxed) {
-            break;
+        if forceful_shutdown {
+            // Un-graceful shutdown: sends a RST packet.
+            trace!(
+                "[{}] Forcefully shutting down virtual interface",
+                virtual_port
+            );
+            let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
+            client_socket.abort();
         }
 
         match virtual_interface.poll(&mut socket_set, loop_start) {
@@ -347,10 +356,26 @@ async fn virtual_tcp_interface(
                     }
                 }
             }
+            if !graceful_shutdown && !forceful_shutdown && !client_socket.is_active() {
+                // Graceful shutdown
+                client_socket.close();
+                trace!(
+                    "[{}] Gracefully shutting down virtual interface",
+                    virtual_port
+                );
+                // We don't break the loop right away so that the FIN segment can be sent in the next poll.
+                graceful_shutdown = true;
+                continue;
+            }
+        }
+
+        if graceful_shutdown || forceful_shutdown {
+            break;
         }
 
         tokio::time::sleep(Duration::from_millis(1)).await;
     }
     trace!("[{}] Virtual interface task terminated", virtual_port);
+    abort.store(true, Ordering::Relaxed);
     Ok(())
 }

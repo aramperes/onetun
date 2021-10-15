@@ -19,6 +19,9 @@ use crate::MAX_PACKET;
 /// The capacity of the broadcast channel for received IP packets.
 const BROADCAST_CAPACITY: usize = 1_000;
 
+/// A WireGuard tunnel. Encapsulates and decapsulates IP packets
+/// to be sent to and received from a remote UDP endpoint.
+/// This tunnel supports at most 1 peer IP at a time, but supports simultaneous ports.
 pub struct WireGuardTunnel {
     source_peer_ip: IpAddr,
     /// `boringtun` peer/tunnel implementation, used for crypto & WG protocol.
