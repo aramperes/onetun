@@ -1,0 +1,5 @@
+/.git/
+/target
+/.idea
+.envrc
+/Dockerfile

@@ -14,6 +14,7 @@ pub struct Config {
     pub(crate) endpoint_addr: SocketAddr,
     pub(crate) source_peer_ip: IpAddr,
     pub(crate) keepalive_seconds: Option<u16>,
+    pub(crate) log: String,
 }
 
 impl Config {
@@ -61,7 +62,14 @@ impl Config {
                     .takes_value(true)
                     .long("keep-alive")
                     .env("ONETUN_KEEP_ALIVE")
-                    .help("Configures a persistent keep-alive for the WireGuard tunnel, in seconds.")
+                    .help("Configures a persistent keep-alive for the WireGuard tunnel, in seconds."),
+                Arg::with_name("log")
+                    .required(false)
+                    .takes_value(true)
+                    .long("log")
+                    .env("ONETUN_LOG")
+                    .default_value("info")
+                    .help("Configures the log level and format.")
             ]).get_matches();
 
         Ok(Self {
@@ -83,6 +91,7 @@ impl Config {
                 .with_context(|| "Invalid source peer IP")?,
             keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
+            log: matches.value_of("log").unwrap_or_default().into(),
         })
     }
 }

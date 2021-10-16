@@ -26,8 +26,8 @@ pub const MAX_PACKET: usize = 65536;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::try_init_timed_custom_env("ONETUN_LOG").unwrap();
     let config = Config::from_args().with_context(|| "Failed to read config")?;
+    init_logger(&config)?;
     let port_pool = Arc::new(PortPool::new());
 
     let wg = WireGuardTunnel::new(&config, port_pool.clone())
@@ -378,4 +378,12 @@ async fn virtual_tcp_interface(
     trace!("[{}] Virtual interface task terminated", virtual_port);
     abort.store(true, Ordering::Relaxed);
     Ok(())
+}
+
+fn init_logger(config: &Config) -> anyhow::Result<()> {
+    let mut builder = pretty_env_logger::formatted_builder();
+    builder.parse_filters(&config.log);
+    builder
+        .try_init()
+        .with_context(|| "Failed to initialize logger")
 }
