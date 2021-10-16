@@ -1,26 +1,26 @@
 use crate::wg::WireGuardTunnel;
+use anyhow::Context;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use std::sync::Arc;
 
 /// A virtual device that processes IP packets. IP packets received from the WireGuard endpoint
-/// are made available to this device using a broadcast channel receiver. IP packets sent from this device
+/// are made available to this device using a channel receiver. IP packets sent from this device
 /// are asynchronously sent out to the WireGuard tunnel.
 pub struct VirtualIpDevice {
     /// Tunnel to send IP packets to.
     wg: Arc<WireGuardTunnel>,
-    /// Broadcast channel receiver for received IP packets.
-    ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
+    /// Channel receiver for received IP packets.
+    ip_dispatch_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
 }
 
 impl VirtualIpDevice {
-    pub fn new(wg: Arc<WireGuardTunnel>) -> Self {
-        let ip_broadcast_rx = wg.subscribe();
+    pub fn new(virtual_port: u16, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
+        let ip_dispatch_rx = wg
+            .register_virtual_interface(virtual_port)
+            .with_context(|| "Failed to register IP dispatch for virtual interface")?;
 
-        Self {
-            wg,
-            ip_broadcast_rx,
-        }
+        Ok(Self { wg, ip_dispatch_rx })
     }
 }
 
@@ -29,7 +29,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     type TxToken = TxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        match self.ip_broadcast_rx.try_recv() {
+        match self.ip_dispatch_rx.try_recv() {
             Ok(buffer) => Some((
                 Self::RxToken { buffer },
                 Self::TxToken {

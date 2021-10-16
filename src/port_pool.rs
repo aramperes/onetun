@@ -13,7 +13,7 @@ const PORT_RANGE: Range<u16> = MIN_PORT..MAX_PORT;
 pub struct PortPool {
     /// Remaining ports
     inner: lockfree::queue::Queue<u16>,
-    /// Ports in use
+    /// Ports in use, with their associated IP channel sender.
     taken: lockfree::set::Set<u16>,
 }
 

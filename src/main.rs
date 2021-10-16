@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     init_logger(&config)?;
     let port_pool = Arc::new(PortPool::new());
 
-    let wg = WireGuardTunnel::new(&config, port_pool.clone())
+    let wg = WireGuardTunnel::new(&config)
         .await
         .with_context(|| "Failed to initialize WireGuard tunnel")?;
     let wg = Arc::new(wg);
@@ -45,12 +45,6 @@ async fn main() -> anyhow::Result<()> {
         // Start consumption task for WireGuard
         let wg = wg.clone();
         tokio::spawn(async move { wg.consume_task().await });
-    }
-
-    {
-        // Start IP broadcast drain task for WireGuard
-        let wg = wg.clone();
-        tokio::spawn(async move { wg.broadcast_drain_task().await });
     }
 
     info!(
@@ -106,9 +100,14 @@ async fn tcp_proxy_server(
 
         tokio::spawn(async move {
             let port_pool = Arc::clone(&port_pool);
-            let result =
-                handle_tcp_proxy_connection(socket, virtual_port, source_peer_ip, dest_addr, wg)
-                    .await;
+            let result = handle_tcp_proxy_connection(
+                socket,
+                virtual_port,
+                source_peer_ip,
+                dest_addr,
+                wg.clone(),
+            )
+            .await;
 
             if let Err(e) = result {
                 error!(
@@ -120,6 +119,7 @@ async fn tcp_proxy_server(
             }
 
             // Release port when connection drops
+            wg.release_virtual_interface(virtual_port);
             port_pool.release(virtual_port);
         });
     }
@@ -270,7 +270,8 @@ async fn virtual_tcp_interface(
 
     // Consumer for IP packets to send through the virtual interface
     // Initialize the interface
-    let device = VirtualIpDevice::new(wg);
+    let device = VirtualIpDevice::new(virtual_port, wg)
+        .with_context(|| "Failed to initialize VirtualIpDevice")?;
     let mut virtual_interface = InterfaceBuilder::new(device)
         .ip_addrs([
             // Interface handles IP packets for the sender and recipient
