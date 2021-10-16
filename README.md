@@ -1,6 +1,6 @@
 # onetun
 
-A cross-platform, user-space WireGuard proxy that requires no network configurations.
+A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations.
 
 ## How it works
 
