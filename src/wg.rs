@@ -251,6 +251,7 @@ impl WireGuardTunnel {
                 .map(|packet| match packet.protocol() {
                     IpProtocol::Tcp => Some(
                         self.route_tcp_segment(
+                            IpVersion::Ipv4,
                             packet.src_addr().into(),
                             packet.dst_addr().into(),
                             packet.payload(),
@@ -269,6 +270,7 @@ impl WireGuardTunnel {
                 .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| {
                     self.route_tcp_segment(
+                        IpVersion::Ipv6,
                         packet.src_addr().into(),
                         packet.dst_addr().into(),
                         packet.payload(),
@@ -286,6 +288,7 @@ impl WireGuardTunnel {
     /// When the given segment is an invalid TCP packet, it returns `None`.
     fn route_tcp_segment(
         &self,
+        ip_version: IpVersion,
         src_addr: IpAddress,
         dst_addr: IpAddress,
         segment: &[u8],
@@ -298,7 +301,7 @@ impl WireGuardTunnel {
             } else {
                 // Port is not in use, but it's a TCP packet so we'll craft a RST.
                 RouteResult::TcpReset(craft_tcp_rst_reply(
-                    IpVersion::Ipv4,
+                    ip_version,
                     src_addr,
                     tcp.src_port(),
                     dst_addr,
