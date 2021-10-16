@@ -1,0 +1,6 @@
+#!/bin/sh
+
+brew install asciidoctor
+
+brew install openssl@1.1
+cp /usr/local/opt/openssl@1.1/lib/pkgconfig/*.pc /usr/local/lib/pkgconfig/
