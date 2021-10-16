@@ -84,6 +84,13 @@ repos as dependencies for now.
 In the meantime, you can download the binary for Windows, macOS (Intel), and Linux (amd64) from
 the [Releases](https://github.com/aramperes/onetun/releases) page.
 
+You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
+
+```shell
+docker run --rm --init --name onetun -p 8080:8080 aramperes/onetun \
+       0.0.0.0:8080 192.168.4.2:8080 [...options...]
+```
+
 You can also build onetun locally, using Rust:
 
 ```shell
