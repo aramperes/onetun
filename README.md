@@ -26,7 +26,7 @@ WireGuard endpoint to trust the onetun peer and for packets to be routed.
 
 Suppose your WireGuard endpoint has the following configuration, and is accessible from `140.30.3.182:51820`:
 
-```toml
+```
 # /etc/wireguard/wg0.conf
 
 [Interface]
