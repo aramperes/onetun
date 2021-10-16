@@ -409,15 +409,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e537132deb99c0eb4b752f0346b6a836200eaaa3516dd7e5514b63930a09e5d"
 
 [[package]]
-name = "itertools"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69ddb889f9d0d08a67338271fa9b62996bc788c7796a5c18cf057420aaed5eaf"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "jni"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -590,7 +581,6 @@ dependencies = [
  "boringtun",
  "clap",
  "futures",
- "itertools",
  "lockfree",
  "log",
  "pretty_env_logger",
