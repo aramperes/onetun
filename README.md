@@ -87,7 +87,7 @@ the [Releases](https://github.com/aramperes/onetun/releases) page.
 You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
 
 ```shell
-docker run --rm --init --name onetun -p 8080:8080 aramperes/onetun \
+docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
        0.0.0.0:8080 192.168.4.2:8080 [...options...]
 ```
 

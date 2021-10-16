@@ -1,5 +1,4 @@
 FROM rust:1.55 as cargo-build
-RUN apt-get update
 
 WORKDIR /usr/src/onetun
 COPY Cargo.toml Cargo.toml
@@ -15,11 +14,12 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:11-slim
+RUN apt-get update
+RUN apt-get install dumb-init -y
 
 COPY --from=cargo-build /usr/src/onetun/target/release/onetun /usr/local/bin/onetun
 
 # Run as non-root
-RUN chown 1000 /usr/local/bin/onetun
 USER 1000
 
-ENTRYPOINT ["/usr/local/bin/onetun"]
+ENTRYPOINT ["dumb-init", "/usr/local/bin/onetun"]
