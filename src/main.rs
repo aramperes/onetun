@@ -18,6 +18,7 @@ use crate::virtual_device::VirtualIpDevice;
 use crate::wg::WireGuardTunnel;
 
 pub mod config;
+pub mod ip_sink;
 pub mod port_pool;
 pub mod virtual_device;
 pub mod wg;
@@ -30,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     init_logger(&config)?;
     let port_pool = Arc::new(PortPool::new());
 
-    let wg = WireGuardTunnel::new(&config, port_pool.clone())
+    let wg = WireGuardTunnel::new(&config)
         .await
         .with_context(|| "Failed to initialize WireGuard tunnel")?;
     let wg = Arc::new(wg);
@@ -48,9 +49,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     {
-        // Start IP broadcast drain task for WireGuard
+        // Start IP sink task for incoming IP packets
         let wg = wg.clone();
-        tokio::spawn(async move { wg.broadcast_drain_task().await });
+        tokio::spawn(async move { ip_sink::run_ip_sink_interface(wg).await });
     }
 
     info!(
@@ -106,9 +107,14 @@ async fn tcp_proxy_server(
 
         tokio::spawn(async move {
             let port_pool = Arc::clone(&port_pool);
-            let result =
-                handle_tcp_proxy_connection(socket, virtual_port, source_peer_ip, dest_addr, wg)
-                    .await;
+            let result = handle_tcp_proxy_connection(
+                socket,
+                virtual_port,
+                source_peer_ip,
+                dest_addr,
+                wg.clone(),
+            )
+            .await;
 
             if let Err(e) = result {
                 error!(
@@ -120,6 +126,7 @@ async fn tcp_proxy_server(
             }
 
             // Release port when connection drops
+            wg.release_virtual_interface(virtual_port);
             port_pool.release(virtual_port);
         });
     }
@@ -270,14 +277,14 @@ async fn virtual_tcp_interface(
 
     // Consumer for IP packets to send through the virtual interface
     // Initialize the interface
-    let device = VirtualIpDevice::new(wg);
+    let device = VirtualIpDevice::new(virtual_port, wg)
+        .with_context(|| "Failed to initialize VirtualIpDevice")?;
     let mut virtual_interface = InterfaceBuilder::new(device)
         .ip_addrs([
             // Interface handles IP packets for the sender and recipient
             IpCidr::new(IpAddress::from(source_peer_ip), 32),
             IpCidr::new(IpAddress::from(dest_addr.ip()), 32),
         ])
-        .any_ip(true)
         .finalize();
 
     // Server socket: this is a placeholder for the interface to route new connections to.
