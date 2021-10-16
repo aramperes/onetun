@@ -22,6 +22,14 @@ impl VirtualIpDevice {
 
         Ok(Self { wg, ip_dispatch_rx })
     }
+
+    pub async fn new_sink(wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
+        let ip_dispatch_rx = wg
+            .register_sink_interface()
+            .await
+            .with_context(|| "Failed to register IP dispatch for sink virtual interface")?;
+        Ok(Self { wg, ip_dispatch_rx })
+    }
 }
 
 impl<'a> Device<'a> for VirtualIpDevice {

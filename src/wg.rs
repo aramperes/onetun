@@ -10,6 +10,7 @@ use smoltcp::wire::{
     TcpPacket, TcpRepr, TcpSeqNumber,
 };
 use tokio::net::UdpSocket;
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::MAX_PACKET;
@@ -30,6 +31,8 @@ pub struct WireGuardTunnel {
     endpoint: SocketAddr,
     /// Maps virtual ports to the corresponding IP packet dispatcher.
     virtual_port_ip_tx: lockfree::map::Map<u16, tokio::sync::mpsc::Sender<Vec<u8>>>,
+    /// IP packet dispatcher for unroutable packets. `None` if not initialized.
+    sink_ip_tx: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
 }
 
 impl WireGuardTunnel {
@@ -49,6 +52,7 @@ impl WireGuardTunnel {
             udp,
             endpoint,
             virtual_port_ip_tx,
+            sink_ip_tx: RwLock::new(None),
         })
     }
 
@@ -96,6 +100,18 @@ impl WireGuardTunnel {
             self.virtual_port_ip_tx.insert(virtual_port, sender);
             Ok(receiver)
         }
+    }
+
+    /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.
+    pub async fn register_sink_interface(
+        &self,
+    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<Vec<u8>>> {
+        let (sender, receiver) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
+
+        let mut sink_ip_tx = self.sink_ip_tx.write().await;
+        *sink_ip_tx = Some(sender);
+
+        Ok(receiver)
     }
 
     /// Releases the virtual interface from IP dispatch.
@@ -223,7 +239,7 @@ impl WireGuardTunnel {
                         }
                         RouteResult::TcpReset => {
                             trace!("Resetting dead TCP connection after packet from WireGuard endpoint");
-                            self.route_tcp_sink(packet).await.unwrap_or_else(|e| {
+                            self.route_ip_sink(packet).await.unwrap_or_else(|e| {
                                 error!("Failed to send TCP reset to sink: {:?}", e)
                             });
                         }
@@ -295,10 +311,21 @@ impl WireGuardTunnel {
             .unwrap_or(RouteResult::Drop)
     }
 
-    /// Route a packet to the TCP sink interface.
-    async fn route_tcp_sink(&self, _packet: &[u8]) -> anyhow::Result<()> {
-        // TODO
-        Ok(())
+    /// Route a packet to the IP sink interface.
+    async fn route_ip_sink(&self, packet: &[u8]) -> anyhow::Result<()> {
+        let ip_sink_tx = self.sink_ip_tx.read().await;
+
+        if let Some(ip_sink_tx) = &*ip_sink_tx {
+            ip_sink_tx
+                .send(packet.to_vec())
+                .await
+                .with_context(|| "Failed to dispatch IP packet to sink interface")
+        } else {
+            warn!(
+                "Could not dispatch unroutable IP packet to sink because interface is not active."
+            );
+            Ok(())
+        }
     }
 }
 

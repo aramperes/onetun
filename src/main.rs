@@ -18,6 +18,7 @@ use crate::virtual_device::VirtualIpDevice;
 use crate::wg::WireGuardTunnel;
 
 pub mod config;
+pub mod ip_sink;
 pub mod port_pool;
 pub mod virtual_device;
 pub mod wg;
@@ -45,6 +46,12 @@ async fn main() -> anyhow::Result<()> {
         // Start consumption task for WireGuard
         let wg = wg.clone();
         tokio::spawn(async move { wg.consume_task().await });
+    }
+
+    {
+        // Start IP sink task for incoming IP packets
+        let wg = wg.clone();
+        tokio::spawn(async move { ip_sink::run_ip_sink_interface(wg).await });
     }
 
     info!(
@@ -278,7 +285,6 @@ async fn virtual_tcp_interface(
             IpCidr::new(IpAddress::from(source_peer_ip), 32),
             IpCidr::new(IpAddress::from(dest_addr.ip()), 32),
         ])
-        .any_ip(true)
         .finalize();
 
     // Server socket: this is a placeholder for the interface to route new connections to.
