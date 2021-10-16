@@ -1,6 +1,8 @@
 use std::ops::Range;
 
 use anyhow::Context;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 const MIN_PORT: u16 = 32768;
 const MAX_PORT: u16 = 60999;
@@ -25,7 +27,9 @@ impl PortPool {
     /// Initializes a new pool of virtual ports.
     pub fn new() -> Self {
         let inner = lockfree::queue::Queue::default();
-        PORT_RANGE.for_each(|p| inner.push(p) as ());
+        let mut ports: Vec<u16> = PORT_RANGE.collect();
+        ports.shuffle(&mut thread_rng());
+        ports.into_iter().for_each(|p| inner.push(p) as ());
         Self {
             inner,
             taken: lockfree::set::Set::new(),

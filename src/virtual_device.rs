@@ -49,7 +49,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
         cap.medium = Medium::Ip;
-        cap.max_transmission_unit = 65535;
+        cap.max_transmission_unit = 1420;
         cap
     }
 }
