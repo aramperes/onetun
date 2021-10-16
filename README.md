@@ -130,8 +130,8 @@ forward it to the server's port, which handles the TCP segment. The server respo
 the peer's local WireGuard interface, gets encrypted, forwarded to the WireGuard endpoint, and then finally back to onetun's UDP port.
 
 When onetun receives an encrypted packet from the WireGuard endpoint, it decrypts it using boringtun.
-The resulting IP packet is dispatched to the corresponding virtual interface running inside onetun; once the corresponding
-interface is matched, the IP packet is read and unpacked, and the virtual client's TCP state is updated.
+The resulting IP packet is dispatched to the corresponding virtual interface running inside onetun;
+the IP packet is then read and processed by the virtual interface, and the virtual client's TCP state is updated.
 
 Whenever data is sent by the real client, it is simply "sent" by the virtual client, which kicks off the whole IP encapsulation
 and WireGuard encryption again. When data is sent by the real server, it ends up routed in the virtual interface, which allows
