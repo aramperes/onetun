@@ -47,6 +47,12 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move { wg.consume_task().await });
     }
 
+    {
+        // Start IP broadcast drain task for WireGuard
+        let wg = wg.clone();
+        tokio::spawn(async move { wg.broadcast_drain_task().await });
+    }
+
     info!(
         "Tunnelling [{}]->[{}] (via [{}] as peer {})",
         &config.source_addr, &config.dest_addr, &config.endpoint_addr, &config.source_peer_ip

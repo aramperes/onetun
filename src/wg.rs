@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use boringtun::noise::{Tunn, TunnResult};
+use futures::lock::Mutex;
 use log::Level;
 use smoltcp::phy::ChecksumCapabilities;
 use smoltcp::wire::{
@@ -11,6 +12,7 @@ use smoltcp::wire::{
     TcpPacket, TcpRepr, TcpSeqNumber,
 };
 use tokio::net::UdpSocket;
+use tokio::sync::broadcast::error::RecvError;
 
 use crate::config::Config;
 use crate::port_pool::PortPool;
@@ -32,8 +34,8 @@ pub struct WireGuardTunnel {
     endpoint: SocketAddr,
     /// Broadcast sender for received IP packets.
     ip_broadcast_tx: tokio::sync::broadcast::Sender<Vec<u8>>,
-    /// Placeholder so that the broadcaster doesn't close.
-    _ip_broadcast_rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
+    /// Sink so that the broadcaster doesn't close. A repeating task should drain this as much as possible.
+    ip_broadcast_rx_sink: Mutex<tokio::sync::broadcast::Receiver<Vec<u8>>>,
     /// Port pool.
     port_pool: Arc<PortPool>,
 }
@@ -47,7 +49,7 @@ impl WireGuardTunnel {
             .await
             .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
         let endpoint = config.endpoint_addr;
-        let (ip_broadcast_tx, ip_broadcast_rx) =
+        let (ip_broadcast_tx, ip_broadcast_rx_sink) =
             tokio::sync::broadcast::channel(BROADCAST_CAPACITY);
 
         Ok(Self {
@@ -56,7 +58,7 @@ impl WireGuardTunnel {
             udp,
             endpoint,
             ip_broadcast_tx,
-            _ip_broadcast_rx: ip_broadcast_rx,
+            ip_broadcast_rx_sink: Mutex::new(ip_broadcast_rx_sink),
             port_pool,
         })
     }
@@ -226,6 +228,33 @@ impl WireGuardTunnel {
                 _ => {}
             }
         }
+    }
+
+    /// A repeating task that drains the default IP broadcast channel receiver.
+    /// It is necessary to keep this receiver alive to prevent the overall channel from closing,
+    /// so draining its backlog regularly is required to avoid memory leaks.
+    pub async fn broadcast_drain_task(&self) {
+        trace!("Starting IP broadcast sink drain task");
+
+        loop {
+            let mut sink = self.ip_broadcast_rx_sink.lock().await;
+            match sink.recv().await {
+                Ok(_) => {
+                    trace!("Drained a packet from IP broadcast sink");
+                }
+                Err(e) => match e {
+                    RecvError::Closed => {
+                        trace!("IP broadcast sink finished draining: channel closed");
+                        break;
+                    }
+                    RecvError::Lagged(_) => {
+                        warn!("IP broadcast sink is falling behind");
+                    }
+                },
+            }
+        }
+
+        trace!("Stopped IP broadcast sink drain");
     }
 
     fn create_tunnel(config: &Config) -> anyhow::Result<Box<Tunn>> {
