@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -98,8 +98,10 @@ impl Config {
 
 fn parse_addr(s: Option<&str>) -> anyhow::Result<SocketAddr> {
     s.with_context(|| "Missing address")?
-        .parse::<SocketAddr>()
-        .with_context(|| "Invalid address")
+        .to_socket_addrs()
+        .with_context(|| "Invalid address")?
+        .next()
+        .with_context(|| "Could not lookup address")
 }
 
 fn parse_ip(s: Option<&str>) -> anyhow::Result<IpAddr> {
