@@ -14,4 +14,3 @@ anyhow = "1"
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "master" }
 tokio = { version = "1", features = ["full"] }
 lockfree = "0.5.1"
-futures = "0.3.17"
