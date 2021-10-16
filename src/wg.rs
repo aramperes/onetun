@@ -278,16 +278,12 @@ impl WireGuardTunnel {
                 // Only care if the packet is destined for this tunnel
                 .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.protocol() {
-                    IpProtocol::Tcp => Some(
-                        self.route_tcp_segment(
-                            IpVersion::Ipv4,
-                            packet.src_addr().into(),
-                            packet.dst_addr().into(),
-                            packet.payload(),
-                        )
-                        // Note: Ipv4 drops invalid TCP packets when the specified protocol says that it should be TCP
-                        .unwrap_or(RouteResult::Drop),
-                    ),
+                    IpProtocol::Tcp => Some(self.route_tcp_segment(
+                        IpVersion::Ipv4,
+                        packet.src_addr().into(),
+                        packet.dst_addr().into(),
+                        packet.payload(),
+                    )),
                     // Unrecognized protocol, so we'll allow it.
                     _ => Some(RouteResult::Broadcast),
                 })
@@ -297,17 +293,17 @@ impl WireGuardTunnel {
                 .ok()
                 // Only care if the packet is destined for this tunnel
                 .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
-                .map(|packet| {
-                    self.route_tcp_segment(
+                .map(|packet| match packet.next_header() {
+                    IpProtocol::Tcp => Some(self.route_tcp_segment(
                         IpVersion::Ipv6,
                         packet.src_addr().into(),
                         packet.dst_addr().into(),
                         packet.payload(),
-                    )
-                    // Note: Since Ipv6 doesn't inform us of the protocol at this layer,
-                    // we should broadcast unrecognized packets.
-                    .unwrap_or(RouteResult::Broadcast)
+                    )),
+                    // Unrecognized protocol, so we'll allow it.
+                    _ => Some(RouteResult::Broadcast),
                 })
+                .flatten()
                 .unwrap_or(RouteResult::Drop),
             _ => RouteResult::Drop,
         }
@@ -321,24 +317,27 @@ impl WireGuardTunnel {
         src_addr: IpAddress,
         dst_addr: IpAddress,
         segment: &[u8],
-    ) -> Option<RouteResult> {
-        TcpPacket::new_checked(segment).ok().map(|tcp| {
-            if self.port_pool.is_in_use(tcp.dst_port()) {
-                RouteResult::Broadcast
-            } else if tcp.rst() {
-                RouteResult::Drop
-            } else {
-                // Port is not in use, but it's a TCP packet so we'll craft a RST.
-                RouteResult::TcpReset(craft_tcp_rst_reply(
-                    ip_version,
-                    src_addr,
-                    tcp.src_port(),
-                    dst_addr,
-                    tcp.dst_port(),
-                    tcp.ack_number(),
-                ))
-            }
-        })
+    ) -> RouteResult {
+        TcpPacket::new_checked(segment)
+            .ok()
+            .map(|tcp| {
+                if self.port_pool.is_in_use(tcp.dst_port()) {
+                    RouteResult::Broadcast
+                } else if tcp.rst() {
+                    RouteResult::Drop
+                } else {
+                    // Port is not in use, but it's a TCP packet so we'll craft a RST.
+                    RouteResult::TcpReset(craft_tcp_rst_reply(
+                        ip_version,
+                        src_addr,
+                        tcp.src_port(),
+                        dst_addr,
+                        tcp.dst_port(),
+                        tcp.ack_number(),
+                    ))
+                }
+            })
+            .unwrap_or(RouteResult::Drop)
     }
 }
 
