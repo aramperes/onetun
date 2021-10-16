@@ -310,7 +310,6 @@ impl WireGuardTunnel {
     }
 
     /// Makes a decision on the handling of an incoming TCP segment.
-    /// When the given segment is an invalid TCP packet, it returns `None`.
     fn route_tcp_segment(
         &self,
         ip_version: IpVersion,
