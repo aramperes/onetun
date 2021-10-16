@@ -2,6 +2,9 @@
 
 A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations.
 
+[![Build status](https://github.com/aramperes/onetun/actions/workflows/build.yml/badge.svg)](https://github.com/aramperes/onetun/actions)
+[![Latest Release](https://img.shields.io/github/v/tag/aramperes/onetun?label=release)](https://github.com/aramperes/onetun/releases/latest)
+
 ## Usage
 
 **onetun** opens a TCP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
