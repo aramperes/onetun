@@ -171,10 +171,6 @@ async fn handle_tcp_proxy_connection(
         .expect("failed to wait for virtual client to be ready");
     trace!("[{}] Virtual client is ready to send data", virtual_port);
 
-    // Data that has been received from the client, but hasn't been flushed to the
-    // virtual client just yet.
-    let mut unflushed_data = Vec::with_capacity(MAX_PACKET);
-
     loop {
         if abort.load(Ordering::Relaxed) {
             break;
@@ -193,21 +189,14 @@ async fn handle_tcp_proxy_connection(
                                     "[{}] Read {} bytes of TCP data from real client",
                                     virtual_port, size
                                 );
-                                unflushed_data.extend_from_slice(data);
+                                if let Err(e) = data_to_virtual_server_tx.send(data.to_vec()).await {
+                                    error!(
+                                        "[{}] Failed to dispatch data to virtual interface: {:?}",
+                                        virtual_port, e
+                                    );
+                                }
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                                trace!("[{}] Real client blocked; have {} bytes to flush", virtual_port, unflushed_data.len());
-                                if !unflushed_data.is_empty() {
-                                    let data = unflushed_data;
-                                    // Reset unflushed data
-                                    unflushed_data = Vec::with_capacity(MAX_PACKET);
-                                    if let Err(e) = data_to_virtual_server_tx.send(data).await {
-                                        error!(
-                                            "[{}] Failed to dispatch data to virtual interface: {:?}",
-                                            virtual_port, e
-                                        );
-                                    }
-                                }
                                 continue;
                             }
                             Err(e) => {
@@ -368,6 +357,11 @@ async fn virtual_tcp_interface(
             if client_socket.can_recv() {
                 match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
                     Ok(data) => {
+                        trace!(
+                            "[{}] Virtual client received {} bytes of data",
+                            virtual_port,
+                            data.len()
+                        );
                         // Send it to the real client
                         if let Err(e) = data_to_real_client_tx.send(data).await {
                             error!("[{}] Failed to dispatch data from virtual client to real client: {:?}", virtual_port, e);
