@@ -4,11 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use boringtun::noise::{Tunn, TunnResult};
 use log::Level;
-use smoltcp::phy::ChecksumCapabilities;
-use smoltcp::wire::{
-    IpAddress, IpProtocol, IpVersion, Ipv4Packet, Ipv4Repr, Ipv6Packet, Ipv6Repr, TcpControl,
-    TcpPacket, TcpRepr, TcpSeqNumber,
-};
+use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket};
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 
@@ -237,14 +233,14 @@ impl WireGuardTunnel {
                                 warn!("[{}] Race condition: failed to get virtual port sender after it was dispatched", port);
                             }
                         }
-                        RouteResult::TcpReset => {
-                            trace!("Resetting dead TCP connection after packet from WireGuard endpoint");
+                        RouteResult::Sink => {
+                            trace!("Sending unroutable IP packet received from WireGuard endpoint to sink interface");
                             self.route_ip_sink(packet).await.unwrap_or_else(|e| {
-                                error!("Failed to send TCP reset to sink: {:?}", e)
+                                error!("Failed to send unroutable IP packet to sink: {:?}", e)
                             });
                         }
                         RouteResult::Drop => {
-                            trace!("Dropped incoming IP packet from WireGuard endpoint");
+                            trace!("Dropped unroutable IP packet received from WireGuard endpoint");
                         }
                     }
                 }
@@ -305,7 +301,7 @@ impl WireGuardTunnel {
                 } else if tcp.rst() {
                     RouteResult::Drop
                 } else {
-                    RouteResult::TcpReset
+                    RouteResult::Sink
                 }
             })
             .unwrap_or(RouteResult::Drop)
@@ -327,95 +323,6 @@ impl WireGuardTunnel {
             Ok(())
         }
     }
-}
-
-/// Craft an IP packet containing a TCP RST segment, given an IP version,
-/// source address (the one to reply to), destination address (the one the reply comes from),
-/// and the ACK number received in the initiating TCP segment.
-fn _craft_tcp_rst_reply(
-    ip_version: IpVersion,
-    source_addr: IpAddress,
-    source_port: u16,
-    dest_addr: IpAddress,
-    dest_port: u16,
-    ack_number: TcpSeqNumber,
-) -> Vec<u8> {
-    let tcp_repr = TcpRepr {
-        src_port: dest_port,
-        dst_port: source_port,
-        control: TcpControl::Rst,
-        seq_number: ack_number,
-        ack_number: None,
-        window_len: 0,
-        window_scale: None,
-        max_seg_size: None,
-        sack_permitted: false,
-        sack_ranges: [None, None, None],
-        payload: &[],
-    };
-
-    let mut tcp_buffer = vec![0u8; 20];
-    let mut tcp_packet = &mut TcpPacket::new_unchecked(&mut tcp_buffer);
-    tcp_repr.emit(
-        &mut tcp_packet,
-        &dest_addr,
-        &source_addr,
-        &ChecksumCapabilities::default(),
-    );
-
-    let mut ip_buffer = vec![0u8; MAX_PACKET];
-
-    let (header_len, total_len) = match ip_version {
-        IpVersion::Ipv4 => {
-            let dest_addr = match dest_addr {
-                IpAddress::Ipv4(dest_addr) => dest_addr,
-                _ => panic!(),
-            };
-            let source_addr = match source_addr {
-                IpAddress::Ipv4(source_addr) => source_addr,
-                _ => panic!(),
-            };
-
-            let mut ip_packet = &mut Ipv4Packet::new_unchecked(&mut ip_buffer);
-            let ip_repr = Ipv4Repr {
-                src_addr: dest_addr,
-                dst_addr: source_addr,
-                protocol: IpProtocol::Tcp,
-                payload_len: tcp_buffer.len(),
-                hop_limit: 64,
-            };
-            ip_repr.emit(&mut ip_packet, &ChecksumCapabilities::default());
-            (
-                ip_packet.header_len() as usize,
-                ip_packet.total_len() as usize,
-            )
-        }
-        IpVersion::Ipv6 => {
-            let dest_addr = match dest_addr {
-                IpAddress::Ipv6(dest_addr) => dest_addr,
-                _ => panic!(),
-            };
-            let source_addr = match source_addr {
-                IpAddress::Ipv6(source_addr) => source_addr,
-                _ => panic!(),
-            };
-            let mut ip_packet = &mut Ipv6Packet::new_unchecked(&mut ip_buffer);
-            let ip_repr = Ipv6Repr {
-                src_addr: dest_addr,
-                dst_addr: source_addr,
-                next_header: IpProtocol::Tcp,
-                payload_len: tcp_buffer.len(),
-                hop_limit: 64,
-            };
-            ip_repr.emit(&mut ip_packet);
-            (ip_packet.header_len(), ip_packet.total_len())
-        }
-        _ => panic!(),
-    };
-
-    ip_buffer[header_len..total_len].copy_from_slice(&tcp_buffer);
-    let packet: &[u8] = &ip_buffer[..total_len];
-    packet.to_vec()
 }
 
 fn trace_ip_packet(message: &str, packet: &[u8]) {
@@ -441,8 +348,8 @@ fn trace_ip_packet(message: &str, packet: &[u8]) {
 enum RouteResult {
     /// Dispatch the packet to the virtual port.
     Dispatch(u16),
-    /// The packet is not routable so it may be reset.
-    TcpReset,
-    /// The packet can be safely ignored.
+    /// The packet is not routable, and should be sent to the sink interface.
+    Sink,
+    /// The packet is not routable, and can be safely ignored.
     Drop,
 }
