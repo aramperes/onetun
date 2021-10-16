@@ -5,10 +5,11 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 ## How it works
 
 **onetun** opens a TCP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
-WireGuard network. It requires no changes to your operating system's network interfaces.
+WireGuard network. It requires no changes to your operating system's network interfaces: you don't need to have `root`
+access, or install any WireGuard tool on your local system for it to work.
 
-The only prerequisite is to register a peer IP and public key on your WireGuard endpoint; those are necessary for the
-WireGuard endpoint to trust the onetun peer and for packets to be routed.
+The only prerequisite is to register a peer IP and public key on the remote WireGuard endpoint; those are necessary for
+the WireGuard endpoint to trust the onetun peer and for packets to be routed.
 
 ```
 ./onetun <SOURCE_ADDR> <DESTINATION_ADDR>                               \
