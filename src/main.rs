@@ -179,10 +179,6 @@ async fn handle_tcp_proxy_connection(
     trace!("[{}] Virtual client is ready to send data", virtual_port);
 
     loop {
-        if abort.load(Ordering::Relaxed) {
-            break;
-        }
-
         tokio::select! {
             readable_result = socket.readable() => {
                 match readable_result {
@@ -234,7 +230,11 @@ async fn handle_tcp_proxy_connection(
                             );
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            continue;
+                            if abort.load(Ordering::Relaxed) {
+                                break;
+                            } else {
+                                continue;
+                            }
                         }
                         Err(e) => {
                             error!(
@@ -243,7 +243,13 @@ async fn handle_tcp_proxy_connection(
                             );
                         }
                     },
-                    None => continue,
+                    None => {
+                        if abort.load(Ordering::Relaxed) {
+                            break;
+                        } else {
+                            continue;
+                        }
+                    },
                 }
             }
         }
