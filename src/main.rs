@@ -420,7 +420,11 @@ async fn virtual_tcp_interface(
                     }
                 }
             }
-            if !graceful_shutdown && !forceful_shutdown && !client_socket.is_active() {
+            if !graceful_shutdown
+                && !forceful_shutdown
+                && !client_socket.is_active()
+                && !client_socket.can_recv()
+            {
                 // Graceful shutdown
                 client_socket.close();
                 trace!(
