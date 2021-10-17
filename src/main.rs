@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use smoltcp::iface::InterfaceBuilder;
-use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
+use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer, TcpState};
 use smoltcp::wire::{IpAddress, IpCidr};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -332,22 +332,20 @@ async fn virtual_tcp_interface(
     let _server_handle = socket_set.add(server_socket?);
     let client_handle = socket_set.add(client_socket?);
 
-    // Instructs that this is the last poll, after which the connection is closed.
-    let mut graceful_shutdown = false;
-
     // Any data that wasn't sent because it was over the sending buffer limit
     let mut tx_extra = Vec::new();
 
     loop {
         let loop_start = smoltcp::time::Instant::now();
-        let forceful_shutdown = abort.load(Ordering::Relaxed);
 
-        if forceful_shutdown {
-            // Un-graceful shutdown: sends a RST packet.
-            trace!(
-                "[{}] Forcefully shutting down virtual interface",
-                virtual_port
-            );
+        // Shutdown occurs when the real client closes the connection,
+        // or if the client was in a CLOSE-WAIT state (after a server FIN) and had no data to send anmore.
+        // One last poll-loop iteration is executed so that the RST segment can be dispatched.
+        let shutdown = abort.load(Ordering::Relaxed);
+
+        if shutdown {
+            // Shutdown: sends a RST packet.
+            trace!("[{}] Shutting down virtual interface", virtual_port);
             let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
             client_socket.abort();
         }
@@ -367,6 +365,7 @@ async fn virtual_tcp_interface(
 
         {
             let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
+
             if client_socket.can_recv() {
                 match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
                     Ok(data) => {
@@ -398,9 +397,16 @@ async fn virtual_tcp_interface(
                 let mut to_transfer = None;
 
                 if tx_extra.is_empty() {
-                    // We can read the next data in the queue
+                    // The payload segment from the previous loop is complete,
+                    // we can now read the next payload in the queue.
                     if let Ok(data) = data_to_virtual_server_rx.try_recv() {
                         to_transfer = Some(data);
+                    } else if client_socket.state() == TcpState::CloseWait {
+                        // No data to be sent in this loop. If the client state is CLOSE-WAIT (because of a server FIN),
+                        // the interface is shutdown.
+                        trace!("[{}] Shutting down virtual interface because client sent no more data, and server sent FIN (CLOSE-WAIT)", virtual_port);
+                        abort.store(true, Ordering::Relaxed);
+                        continue;
                     }
                 }
 
@@ -426,24 +432,9 @@ async fn virtual_tcp_interface(
                     }
                 }
             }
-            if !graceful_shutdown
-                && !forceful_shutdown
-                && !client_socket.is_active()
-                && !client_socket.can_recv()
-            {
-                // Graceful shutdown
-                client_socket.close();
-                trace!(
-                    "[{}] Gracefully shutting down virtual interface",
-                    virtual_port
-                );
-                // We don't break the loop right away so that the FIN segment can be sent in the next poll.
-                graceful_shutdown = true;
-                continue;
-            }
         }
 
-        if graceful_shutdown || forceful_shutdown {
+        if shutdown {
             break;
         }
 
