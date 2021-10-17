@@ -5,6 +5,16 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 [![Build status](https://github.com/aramperes/onetun/actions/workflows/build.yml/badge.svg)](https://github.com/aramperes/onetun/actions)
 [![Latest Release](https://img.shields.io/github/v/tag/aramperes/onetun?label=release)](https://github.com/aramperes/onetun/releases/latest)
 
+## Use-case
+
+- You have an existing WireGuard endpoint (router), accessible using its UDP endpoint (typically port 51820); and
+- You have a peer on the WireGuard network, running a TCP server on a port accessible to the WireGuard network; and
+- You want to access this TCP service from a second computer, on which you can't install WireGuard because you
+  can't (no root access) or don't want to (polluting OS configs).
+
+For example, this can be useful to forward a port from a Kubernetes cluster to a server behind WireGuard,
+without needing to install WireGuard in a Pod.
+
 ## Usage
 
 **onetun** opens a TCP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
