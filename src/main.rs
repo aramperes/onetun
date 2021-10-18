@@ -212,7 +212,7 @@ async fn handle_tcp_proxy_connection(
     // Wait for virtual client to be ready.
     virtual_client_ready_rx
         .await
-        .expect("failed to wait for virtual client to be ready");
+        .with_context(|| "Virtual client dropped before being ready.")?;
     trace!("[{}] Virtual client is ready to send data", virtual_port);
 
     loop {
@@ -351,15 +351,7 @@ async fn virtual_tcp_interface(
         static mut TCP_SERVER_TX_DATA: [u8; MAX_PACKET] = [0; MAX_PACKET];
         let tcp_rx_buffer = TcpSocketBuffer::new(unsafe { &mut TCP_SERVER_RX_DATA[..] });
         let tcp_tx_buffer = TcpSocketBuffer::new(unsafe { &mut TCP_SERVER_TX_DATA[..] });
-        let mut socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
-
-        socket
-            .connect(
-                (IpAddress::from(dest_addr.ip()), dest_addr.port()),
-                (IpAddress::from(source_peer_ip), virtual_port),
-            )
-            .with_context(|| "Virtual server socket failed to listen")?;
-
+        let socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
         Ok(socket)
     };
 
@@ -372,11 +364,16 @@ async fn virtual_tcp_interface(
     // Any data that wasn't sent because it was over the sending buffer limit
     let mut tx_extra = Vec::new();
 
+    // Counts the connection attempts by the virtual client
+    let mut connection_attempts = 0;
+    // Whether the client has successfully connected before. Prevents the case of connecting again.
+    let mut has_connected = false;
+
     loop {
         let loop_start = smoltcp::time::Instant::now();
 
         // Shutdown occurs when the real client closes the connection,
-        // or if the client was in a CLOSE-WAIT state (after a server FIN) and had no data to send anmore.
+        // or if the client was in a CLOSE-WAIT state (after a server FIN) and had no data to send anymore.
         // One last poll-loop iteration is executed so that the RST segment can be dispatched.
         let shutdown = abort.load(Ordering::Relaxed);
 
@@ -402,6 +399,37 @@ async fn virtual_tcp_interface(
 
         {
             let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
+
+            if !shutdown && client_socket.state() == TcpState::Closed && !has_connected {
+                // Not shutting down, but the client socket is closed, and the client never successfully connected.
+                if connection_attempts < 10 {
+                    // Try to connect
+                    client_socket
+                        .connect(
+                            (IpAddress::from(dest_addr.ip()), dest_addr.port()),
+                            (IpAddress::from(source_peer_ip), virtual_port),
+                        )
+                        .with_context(|| "Virtual server socket failed to listen")?;
+                    if connection_attempts > 0 {
+                        debug!(
+                            "[{}] Virtual client retrying connection in 500ms",
+                            virtual_port
+                        );
+                        // Not our first connection attempt, wait a little bit.
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                } else {
+                    // Too many connection attempts
+                    abort.store(true, Ordering::Relaxed);
+                }
+                connection_attempts += 1;
+                continue;
+            }
+
+            if client_socket.state() == TcpState::Established {
+                // Prevent reconnection if the server later closes.
+                has_connected = true;
+            }
 
             if client_socket.can_recv() {
                 match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
