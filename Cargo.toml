@@ -16,3 +16,4 @@ tokio = { version = "1", features = ["full"] }
 lockfree = "0.5.1"
 futures = "0.3.17"
 rand = "0.8.4"
+nom = "7"

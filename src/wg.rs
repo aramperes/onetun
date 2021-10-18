@@ -24,7 +24,7 @@ pub struct WireGuardTunnel {
     /// The UDP socket for the public WireGuard endpoint to connect to.
     udp: UdpSocket,
     /// The address of the public WireGuard endpoint (UDP).
-    endpoint: SocketAddr,
+    pub(crate) endpoint: SocketAddr,
     /// Maps virtual ports to the corresponding IP packet dispatcher.
     virtual_port_ip_tx: lockfree::map::Map<u16, tokio::sync::mpsc::Sender<Vec<u8>>>,
     /// IP packet dispatcher for unroutable packets. `None` if not initialized.

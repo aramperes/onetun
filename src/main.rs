@@ -12,7 +12,7 @@ use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer, TcpState};
 use smoltcp::wire::{IpAddress, IpCidr};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::config::Config;
+use crate::config::{Config, PortForwardConfig, PortProtocol};
 use crate::port_pool::PortPool;
 use crate::virtual_device::VirtualIpDevice;
 use crate::wg::WireGuardTunnel;
@@ -54,26 +54,63 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move { ip_sink::run_ip_sink_interface(wg).await });
     }
 
+    {
+        let port_forwards = config.port_forwards;
+        let source_peer_ip = config.source_peer_ip;
+
+        futures::future::try_join_all(
+            port_forwards
+                .into_iter()
+                .map(|pf| (pf, wg.clone(), port_pool.clone()))
+                .map(|(pf, wg, port_pool)| {
+                    tokio::spawn(async move {
+                        port_forward(pf, source_peer_ip, port_pool, wg)
+                            .await
+                            .with_context(|| format!("Port-forward failed: {})", pf))
+                    })
+                }),
+        )
+        .await
+        .with_context(|| "A port-forward instance failed.")
+        .map(|_| ())
+    }
+}
+
+async fn port_forward(
+    port_forward: PortForwardConfig,
+    source_peer_ip: IpAddr,
+    port_pool: Arc<PortPool>,
+    wg: Arc<WireGuardTunnel>,
+) -> anyhow::Result<()> {
     info!(
-        "Tunnelling [{}]->[{}] (via [{}] as peer {})",
-        &config.source_addr, &config.dest_addr, &config.endpoint_addr, &config.source_peer_ip
+        "Tunnelling {} [{}]->[{}] (via [{}] as peer {})",
+        port_forward.protocol,
+        port_forward.source,
+        port_forward.destination,
+        &wg.endpoint,
+        source_peer_ip
     );
 
-    tcp_proxy_server(
-        config.source_addr,
-        config.source_peer_ip,
-        config.dest_addr,
-        port_pool.clone(),
-        wg,
-    )
-    .await
+    match port_forward.protocol {
+        PortProtocol::Tcp => {
+            tcp_proxy_server(
+                port_forward.source,
+                port_forward.destination,
+                source_peer_ip,
+                port_pool,
+                wg,
+            )
+            .await
+        }
+        PortProtocol::Udp => Err(anyhow::anyhow!("UDP isn't supported just yet.")),
+    }
 }
 
 /// Starts the server that listens on TCP connections.
 async fn tcp_proxy_server(
     listen_addr: SocketAddr,
-    source_peer_ip: IpAddr,
     dest_addr: SocketAddr,
+    source_peer_ip: IpAddr,
     port_pool: Arc<PortPool>,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {

@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::convert::TryFrom;
+use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
@@ -7,8 +10,7 @@ use clap::{App, Arg};
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub(crate) source_addr: SocketAddr,
-    pub(crate) dest_addr: SocketAddr,
+    pub(crate) port_forwards: Vec<PortForwardConfig>,
     pub(crate) private_key: Arc<X25519SecretKey>,
     pub(crate) endpoint_public_key: Arc<X25519PublicKey>,
     pub(crate) endpoint_addr: SocketAddr,
@@ -23,16 +25,12 @@ impl Config {
             .author("Aram Peres <aram.peres@gmail.com>")
             .version(env!("CARGO_PKG_VERSION"))
             .args(&[
-                Arg::with_name("SOURCE_ADDR")
-                    .required(true)
+                Arg::with_name("PORT_FORWARD")
+                    .required(false)
+                    .multiple(true)
                     .takes_value(true)
-                    .env("ONETUN_SOURCE_ADDR")
-                    .help("The source address (IP + port) to forward from. Example: 127.0.0.1:2115"),
-                Arg::with_name("DESTINATION_ADDR")
-                    .required(true)
-                    .takes_value(true)
-                    .env("ONETUN_DESTINATION_ADDR")
-                    .help("The destination address (IP + port) to forward to. The IP should be a peer registered in the Wireguard endpoint. Example: 192.168.4.2:2116"),
+                    .help("Port forward configurations. The format of each argument is [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...]. \
+                    Environment variables of the form 'ONETUN_PORT_FORWARD_[#]' are also accepted, where [#] starts at 1."),
                 Arg::with_name("private-key")
                     .required(true)
                     .takes_value(true)
@@ -72,11 +70,40 @@ impl Config {
                     .help("Configures the log level and format.")
             ]).get_matches();
 
+        // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` strings
+        let mut port_forward_strings = HashSet::new();
+        matches.values_of("PORT_FORWARD").map(|values| {
+            values
+                .into_iter()
+                .map(|v| port_forward_strings.insert(v.to_string()))
+                .map(|_| ())
+        });
+        for n in 1.. {
+            if let Ok(env) = std::env::var(format!("ONETUN_PORT_FORWARD_{}", n)) {
+                port_forward_strings.insert(env);
+            } else {
+                break;
+            }
+        }
+        if port_forward_strings.is_empty() {
+            return Err(anyhow::anyhow!("No port forward configurations given."));
+        }
+
+        // Parse `PORT_FORWARD` strings into `PortForwardConfig`
+        let port_forwards: Vec<anyhow::Result<Vec<PortForwardConfig>>> = port_forward_strings
+            .into_iter()
+            .map(|s| PortForwardConfig::from_str(&s))
+            .collect();
+        let port_forwards: anyhow::Result<Vec<Vec<PortForwardConfig>>> =
+            port_forwards.into_iter().collect();
+        let port_forwards: Vec<PortForwardConfig> = port_forwards
+            .with_context(|| "Failed to parse port forward config")?
+            .into_iter()
+            .flatten()
+            .collect();
+
         Ok(Self {
-            source_addr: parse_addr(matches.value_of("SOURCE_ADDR"))
-                .with_context(|| "Invalid source address")?,
-            dest_addr: parse_addr(matches.value_of("DESTINATION_ADDR"))
-                .with_context(|| "Invalid destination address")?,
+            port_forwards,
             private_key: Arc::new(
                 parse_private_key(matches.value_of("private-key"))
                     .with_context(|| "Invalid private key")?,
@@ -136,4 +163,90 @@ fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
     } else {
         Ok(None)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PortForwardConfig {
+    /// The source IP and port where the local server will run.
+    pub source: SocketAddr,
+    /// The destination IP and port to which traffic will be forwarded.
+    pub destination: SocketAddr,
+    /// The transport protocol to use for the port (Layer 4).
+    pub protocol: PortProtocol,
+}
+
+impl PortForwardConfig {
+    /// Converts a string representation into `PortForwardConfig`.
+    ///
+    /// Sample formats:
+    ///  - `127.0.0.1:8080:192.168.4.1:8081:TCP,UDP`
+    ///  - `127.0.0.1:8080:192.168.4.1:8081:TCP`
+    ///  - `0.0.0.0:8080:192.168.4.1:8081`
+    ///  - `[::1]:8080:192.168.4.1:8081`
+    ///  - `8080:192.168.4.1:8081`
+    ///  - `8080:192.168.4.1:8081:TCP`
+    ///
+    /// Implementation Notes:
+    ///  - The format is formalized as `[src_host:]<src_port>:<dst_host>:<dst_port>[:PROTO1,PROTO2,...]`
+    ///  - `src_host` is optional and defaults to `127.0.0.1`.
+    ///  - `src_host` and `dst_host` may be specified as IPv4, IPv6, or a FQDN to be resolved by DNS.
+    ///  - IPv6 addresses must be prefixed with `[` and suffixed with `]`. Example: `[::1]`.
+    ///  - Any `u16` is accepted as `src_port` and `dst_port`
+    ///  - Specifying protocols (`PROTO1,PROTO2,...`) is optional and defaults to `TCP`. Values must be separated by commas.
+    pub fn from_str<'a>(s: &'a str) -> anyhow::Result<Vec<PortForwardConfig>> {
+        use nom::branch::alt;
+        use nom::bytes::complete::{is_not, take_until, take_while};
+        use nom::character::complete::char;
+        use nom::combinator::opt;
+        use nom::multi::separated_list0;
+        use nom::sequence::{delimited, terminated};
+        use nom::IResult;
+
+        Err(anyhow::anyhow!("TODO"))
+    }
+}
+
+impl Display for PortForwardConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.source, self.destination, self.protocol)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PortProtocol {
+    Tcp,
+    Udp,
+}
+
+impl TryFrom<&str> for PortProtocol {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> anyhow::Result<Self> {
+        match value.to_uppercase().as_str() {
+            "TCP" => Ok(Self::Tcp),
+            "UDP" => Ok(Self::Udp),
+            _ => Err(anyhow::anyhow!("Invalid protocol specifier: {}", value)),
+        }
+    }
+}
+
+impl Display for PortProtocol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Tcp => "TCP",
+                Self::Udp => "UDP",
+            }
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests the parsing of `PortForwardConfig`.
+    fn test_parse_port_forward_config() {}
 }
