@@ -58,22 +58,22 @@ async fn main() -> anyhow::Result<()> {
         let port_forwards = config.port_forwards;
         let source_peer_ip = config.source_peer_ip;
 
-        futures::future::try_join_all(
-            port_forwards
-                .into_iter()
-                .map(|pf| (pf, wg.clone(), port_pool.clone()))
-                .map(|(pf, wg, port_pool)| {
-                    tokio::spawn(async move {
+        port_forwards
+            .into_iter()
+            .map(|pf| (pf, wg.clone(), port_pool.clone()))
+            .for_each(move |(pf, wg, port_pool)| {
+                std::thread::spawn(move || {
+                    let cpu_pool = tokio::runtime::Runtime::new().unwrap();
+                    cpu_pool.block_on(async move {
                         port_forward(pf, source_peer_ip, port_pool, wg)
                             .await
                             .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
-                    })
-                }),
-        )
-        .await
-        .with_context(|| "A port-forward instance failed.")
-        .map(|_| ())
+                    });
+                });
+            });
     }
+
+    futures::future::pending().await
 }
 
 async fn port_forward(
