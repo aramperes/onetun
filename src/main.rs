@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
                     tokio::spawn(async move {
                         port_forward(pf, source_peer_ip, port_pool, wg)
                             .await
-                            .with_context(|| format!("Port-forward failed: {})", pf))
+                            .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
                     })
                 }),
         )

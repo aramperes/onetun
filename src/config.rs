@@ -29,8 +29,19 @@ impl Config {
                     .required(false)
                     .multiple(true)
                     .takes_value(true)
-                    .help("Port forward configurations. The format of each argument is [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...]. \
-                    Environment variables of the form 'ONETUN_PORT_FORWARD_[#]' are also accepted, where [#] starts at 1."),
+                    .help("Port forward configurations. The format of each argument is [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...], \
+                    where [src_host] is the local IP to listen on, <src_port> is the local port to listen on, <dst_host> is the remote peer IP to forward to, and <dst_port> is the remote port to forward to. \
+                    Environment variables of the form 'ONETUN_PORT_FORWARD_[#]' are also accepted, where [#] starts at 1.\n\
+                    Examples:\n\
+                    \t127.0.0.1:8080:192.168.4.1:8081:TCP,UDP\n\
+                    \t127.0.0.1:8080:192.168.4.1:8081:TCP\n\
+                    \t0.0.0.0:8080:192.168.4.1:8081\n\
+                    \t[::1]:8080:192.168.4.1:8081\n\
+                    \t8080:192.168.4.1:8081\n\
+                    \t8080:192.168.4.1:8081:TCP\n\
+                    \tlocalhost:8080:192.168.4.1:8081:TCP\n\
+                    \tlocalhost:8080:peer.intranet:8081:TCP\
+                    "),
                 Arg::with_name("private-key")
                     .required(true)
                     .takes_value(true)
@@ -70,14 +81,13 @@ impl Config {
                     .help("Configures the log level and format.")
             ]).get_matches();
 
-        // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` strings
+        // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` envs
         let mut port_forward_strings = HashSet::new();
-        matches.values_of("PORT_FORWARD").map(|values| {
-            values
-                .into_iter()
-                .map(|v| port_forward_strings.insert(v.to_string()))
-                .map(|_| ())
-        });
+        if let Some(values) = matches.values_of("PORT_FORWARD") {
+            for value in values {
+                port_forward_strings.insert(value.to_owned());
+            }
+        }
         for n in 1.. {
             if let Ok(env) = std::env::var(format!("ONETUN_PORT_FORWARD_{}", n)) {
                 port_forward_strings.insert(env);
@@ -90,12 +100,10 @@ impl Config {
         }
 
         // Parse `PORT_FORWARD` strings into `PortForwardConfig`
-        let port_forwards: Vec<anyhow::Result<Vec<PortForwardConfig>>> = port_forward_strings
+        let port_forwards: anyhow::Result<Vec<Vec<PortForwardConfig>>> = port_forward_strings
             .into_iter()
-            .map(|s| PortForwardConfig::from_str(&s))
+            .map(|s| PortForwardConfig::from_notation(&s))
             .collect();
-        let port_forwards: anyhow::Result<Vec<Vec<PortForwardConfig>>> =
-            port_forwards.into_iter().collect();
         let port_forwards: Vec<PortForwardConfig> = port_forwards
             .with_context(|| "Failed to parse port forward config")?
             .into_iter()
@@ -165,7 +173,7 @@ fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct PortForwardConfig {
     /// The source IP and port where the local server will run.
     pub source: SocketAddr,
@@ -185,6 +193,8 @@ impl PortForwardConfig {
     ///  - `[::1]:8080:192.168.4.1:8081`
     ///  - `8080:192.168.4.1:8081`
     ///  - `8080:192.168.4.1:8081:TCP`
+    ///  - `localhost:8080:192.168.4.1:8081:TCP`
+    ///  - `localhost:8080:peer.intranet:8081:TCP`
     ///
     /// Implementation Notes:
     ///  - The format is formalized as `[src_host:]<src_port>:<dst_host>:<dst_port>[:PROTO1,PROTO2,...]`
@@ -193,16 +203,126 @@ impl PortForwardConfig {
     ///  - IPv6 addresses must be prefixed with `[` and suffixed with `]`. Example: `[::1]`.
     ///  - Any `u16` is accepted as `src_port` and `dst_port`
     ///  - Specifying protocols (`PROTO1,PROTO2,...`) is optional and defaults to `TCP`. Values must be separated by commas.
-    pub fn from_str<'a>(s: &'a str) -> anyhow::Result<Vec<PortForwardConfig>> {
-        use nom::branch::alt;
-        use nom::bytes::complete::{is_not, take_until, take_while};
-        use nom::character::complete::char;
-        use nom::combinator::opt;
-        use nom::multi::separated_list0;
-        use nom::sequence::{delimited, terminated};
-        use nom::IResult;
+    pub fn from_notation(s: &str) -> anyhow::Result<Vec<PortForwardConfig>> {
+        mod parsers {
+            use nom::branch::alt;
+            use nom::bytes::complete::is_not;
+            use nom::character::complete::{alpha1, char, digit1};
+            use nom::combinator::{complete, map, opt, success};
+            use nom::error::ErrorKind;
+            use nom::multi::separated_list1;
+            use nom::sequence::{delimited, preceded, separated_pair, tuple};
+            use nom::IResult;
 
-        Err(anyhow::anyhow!("TODO"))
+            fn ipv6(s: &str) -> IResult<&str, &str> {
+                delimited(char('['), is_not("]"), char(']'))(s)
+            }
+
+            fn ipv4_or_fqdn(s: &str) -> IResult<&str, &str> {
+                let s = is_not(":")(s)?;
+                if s.1.chars().all(|c| c.is_ascii_digit()) {
+                    // If ipv4 or fqdn is all digits, it's not valid.
+                    Err(nom::Err::Error(nom::error::ParseError::from_error_kind(
+                        s.1,
+                        ErrorKind::Fail,
+                    )))
+                } else {
+                    Ok(s)
+                }
+            }
+
+            fn port(s: &str) -> IResult<&str, &str> {
+                digit1(s)
+            }
+
+            fn ip_or_fqdn(s: &str) -> IResult<&str, &str> {
+                alt((ipv6, ipv4_or_fqdn))(s)
+            }
+
+            fn no_ip(s: &str) -> IResult<&str, Option<&str>> {
+                success(None)(s)
+            }
+
+            fn src_addr(s: &str) -> IResult<&str, (Option<&str>, &str)> {
+                let with_ip = separated_pair(map(ip_or_fqdn, Some), char(':'), port);
+                let without_ip = tuple((no_ip, port));
+                alt((with_ip, without_ip))(s)
+            }
+
+            fn dst_addr(s: &str) -> IResult<&str, (&str, &str)> {
+                separated_pair(ip_or_fqdn, char(':'), port)(s)
+            }
+
+            fn protocol(s: &str) -> IResult<&str, &str> {
+                alpha1(s)
+            }
+
+            fn protocols(s: &str) -> IResult<&str, Option<Vec<&str>>> {
+                opt(preceded(char(':'), separated_list1(char(','), protocol)))(s)
+            }
+
+            #[allow(clippy::type_complexity)]
+            pub fn port_forward(
+                s: &str,
+            ) -> IResult<&str, ((Option<&str>, &str), (), (&str, &str), Option<Vec<&str>>)>
+            {
+                complete(tuple((
+                    src_addr,
+                    map(char(':'), |_| ()),
+                    dst_addr,
+                    protocols,
+                )))(s)
+            }
+        }
+
+        // TODO: Could improve error management with custom errors, so that the messages are more helpful.
+        let (src_addr, _, dst_addr, protocols) = parsers::port_forward(s)
+            .map_err(|e| anyhow::anyhow!("Invalid port-forward definition: {}", e))?
+            .1;
+
+        let source = (
+            src_addr.0.unwrap_or("127.0.0.1"),
+            src_addr
+                .1
+                .parse::<u16>()
+                .with_context(|| "Invalid source port")?,
+        )
+            .to_socket_addrs()
+            .with_context(|| "Invalid source address")?
+            .next()
+            .with_context(|| "Could not resolve source address")?;
+
+        let destination = (
+            dst_addr.0,
+            dst_addr
+                .1
+                .parse::<u16>()
+                .with_context(|| "Invalid source port")?,
+        )
+            .to_socket_addrs() // TODO: Pass this as given and use DNS config instead (issue #15)
+            .with_context(|| "Invalid destination address")?
+            .next()
+            .with_context(|| "Could not resolve destination address")?;
+
+        // Parse protocols
+        let protocols = if let Some(protocols) = protocols {
+            let protocols: anyhow::Result<Vec<PortProtocol>> =
+                protocols.into_iter().map(PortProtocol::try_from).collect();
+            protocols
+        } else {
+            Ok(vec![PortProtocol::Tcp])
+        }
+        .with_context(|| "Failed to parse protocols")?;
+
+        // Returns an config for each protocol
+        Ok(protocols
+            .into_iter()
+            .map(|protocol| Self {
+                source,
+                destination,
+                protocol,
+            })
+            .collect())
     }
 }
 
@@ -212,7 +332,7 @@ impl Display for PortForwardConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PortProtocol {
     Tcp,
     Udp,
@@ -245,8 +365,117 @@ impl Display for PortProtocol {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     /// Tests the parsing of `PortForwardConfig`.
-    fn test_parse_port_forward_config() {}
+    #[test]
+    fn test_parse_port_forward_config_1() {
+        assert_eq!(
+            PortForwardConfig::from_notation("192.168.0.1:8080:192.168.4.1:8081:TCP,UDP")
+                .expect("Failed to parse"),
+            vec![
+                PortForwardConfig {
+                    source: SocketAddr::from_str("192.168.0.1:8080").unwrap(),
+                    destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                    protocol: PortProtocol::Tcp
+                },
+                PortForwardConfig {
+                    source: SocketAddr::from_str("192.168.0.1:8080").unwrap(),
+                    destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                    protocol: PortProtocol::Udp
+                }
+            ]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_2() {
+        assert_eq!(
+            PortForwardConfig::from_notation("192.168.0.1:8080:192.168.4.1:8081:TCP")
+                .expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: SocketAddr::from_str("192.168.0.1:8080").unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_3() {
+        assert_eq!(
+            PortForwardConfig::from_notation("0.0.0.0:8080:192.168.4.1:8081")
+                .expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: SocketAddr::from_str("0.0.0.0:8080").unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_4() {
+        assert_eq!(
+            PortForwardConfig::from_notation("[::1]:8080:192.168.4.1:8081")
+                .expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: SocketAddr::from_str("[::1]:8080").unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_5() {
+        assert_eq!(
+            PortForwardConfig::from_notation("8080:192.168.4.1:8081").expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: SocketAddr::from_str("127.0.0.1:8080").unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_6() {
+        assert_eq!(
+            PortForwardConfig::from_notation("8080:192.168.4.1:8081:TCP").expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: SocketAddr::from_str("127.0.0.1:8080").unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_7() {
+        assert_eq!(
+            PortForwardConfig::from_notation("localhost:8080:192.168.4.1:8081")
+                .expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: "localhost:8080".to_socket_addrs().unwrap().next().unwrap(),
+                destination: SocketAddr::from_str("192.168.4.1:8081").unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
+    /// Tests the parsing of `PortForwardConfig`.
+    #[test]
+    fn test_parse_port_forward_config_8() {
+        assert_eq!(
+            PortForwardConfig::from_notation("localhost:8080:localhost:8081:TCP")
+                .expect("Failed to parse"),
+            vec![PortForwardConfig {
+                source: "localhost:8080".to_socket_addrs().unwrap().next().unwrap(),
+                destination: "localhost:8081".to_socket_addrs().unwrap().next().unwrap(),
+                protocol: PortProtocol::Tcp
+            }]
+        );
+    }
 }
