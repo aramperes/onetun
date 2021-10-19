@@ -74,7 +74,7 @@ local port, say `127.0.0.1:8080`, that will tunnel through WireGuard to reach th
 You'll then see this log:
 
 ```
-INFO  onetun > Tunnelling [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+INFO  onetun > Tunneling [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
 Which means you can now access the port locally!

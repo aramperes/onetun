@@ -9,10 +9,10 @@ use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 
 use crate::config::Config;
-use crate::MAX_PACKET;
 
 /// The capacity of the channel for received IP packets.
 const DISPATCH_CAPACITY: usize = 1_000;
+const MAX_PACKET: usize = 65536;
 
 /// A WireGuard tunnel. Encapsulates and decapsulates IP packets
 /// to be sent to and received from a remote UDP endpoint.
