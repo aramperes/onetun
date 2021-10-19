@@ -347,10 +347,10 @@ async fn virtual_tcp_interface(
     };
 
     let client_socket: anyhow::Result<TcpSocket> = {
-        static mut TCP_SERVER_RX_DATA: [u8; MAX_PACKET] = [0; MAX_PACKET];
-        static mut TCP_SERVER_TX_DATA: [u8; MAX_PACKET] = [0; MAX_PACKET];
-        let tcp_rx_buffer = TcpSocketBuffer::new(unsafe { &mut TCP_SERVER_RX_DATA[..] });
-        let tcp_tx_buffer = TcpSocketBuffer::new(unsafe { &mut TCP_SERVER_TX_DATA[..] });
+        let rx_data = vec![0u8; MAX_PACKET];
+        let tx_data = vec![0u8; MAX_PACKET];
+        let tcp_rx_buffer = TcpSocketBuffer::new(rx_data);
+        let tcp_tx_buffer = TcpSocketBuffer::new(tx_data);
         let socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
         Ok(socket)
     };
