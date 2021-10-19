@@ -18,7 +18,7 @@ const DISPATCH_CAPACITY: usize = 1_000;
 /// to be sent to and received from a remote UDP endpoint.
 /// This tunnel supports at most 1 peer IP at a time, but supports simultaneous ports.
 pub struct WireGuardTunnel {
-    source_peer_ip: IpAddr,
+    pub(crate) source_peer_ip: IpAddr,
     /// `boringtun` peer/tunnel implementation, used for crypto & WG protocol.
     peer: Box<Tunn>,
     /// The UDP socket for the public WireGuard endpoint to connect to.
