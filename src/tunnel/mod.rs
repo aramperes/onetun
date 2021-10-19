@@ -2,15 +2,17 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 use crate::config::{PortForwardConfig, PortProtocol};
-use crate::port_pool::PortPool;
+use crate::tunnel::tcp::TcpPortPool;
 use crate::wg::WireGuardTunnel;
 
-mod tcp;
+pub mod tcp;
+#[allow(unused)]
+pub mod udp;
 
 pub async fn port_forward(
     port_forward: PortForwardConfig,
     source_peer_ip: IpAddr,
-    port_pool: Arc<PortPool>,
+    tcp_port_pool: Arc<TcpPortPool>,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
     info!(
@@ -23,7 +25,7 @@ pub async fn port_forward(
     );
 
     match port_forward.protocol {
-        PortProtocol::Tcp => tcp::tcp_proxy_server(port_forward, port_pool, wg).await,
-        PortProtocol::Udp => Err(anyhow::anyhow!("UDP isn't supported just yet.")),
+        PortProtocol::Tcp => tcp::tcp_proxy_server(port_forward, tcp_port_pool, wg).await,
+        PortProtocol::Udp => udp::udp_proxy_server(port_forward, /* udp_port_pool, */ wg).await,
     }
 }

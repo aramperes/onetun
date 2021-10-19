@@ -1,6 +1,6 @@
-use crate::config::PortForwardConfig;
+use crate::config::{PortForwardConfig, PortProtocol};
 use crate::virtual_device::VirtualIpDevice;
-use crate::virtual_iface::VirtualInterfacePoll;
+use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::wg::WireGuardTunnel;
 use anyhow::Context;
 use async_trait::async_trait;
@@ -74,8 +74,9 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
 
         // Consumer for IP packets to send through the virtual interface
         // Initialize the interface
-        let device = VirtualIpDevice::new(self.virtual_port, self.wg)
-            .with_context(|| "Failed to initialize TCP VirtualIpDevice")?;
+        let device =
+            VirtualIpDevice::new(VirtualPort(self.virtual_port, PortProtocol::Tcp), self.wg)
+                .with_context(|| "Failed to initialize TCP VirtualIpDevice")?;
         let mut virtual_interface = InterfaceBuilder::new(device)
             .ip_addrs([
                 // Interface handles IP packets for the sender and recipient

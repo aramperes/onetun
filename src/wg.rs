@@ -8,7 +8,8 @@ use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket};
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 
-use crate::config::Config;
+use crate::config::{Config, PortProtocol};
+use crate::virtual_iface::VirtualPort;
 
 /// The capacity of the channel for received IP packets.
 const DISPATCH_CAPACITY: usize = 1_000;
@@ -26,7 +27,7 @@ pub struct WireGuardTunnel {
     /// The address of the public WireGuard endpoint (UDP).
     pub(crate) endpoint: SocketAddr,
     /// Maps virtual ports to the corresponding IP packet dispatcher.
-    virtual_port_ip_tx: lockfree::map::Map<u16, tokio::sync::mpsc::Sender<Vec<u8>>>,
+    virtual_port_ip_tx: lockfree::map::Map<VirtualPort, tokio::sync::mpsc::Sender<Vec<u8>>>,
     /// IP packet dispatcher for unroutable packets. `None` if not initialized.
     sink_ip_tx: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
 }
@@ -86,7 +87,7 @@ impl WireGuardTunnel {
     /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.
     pub fn register_virtual_interface(
         &self,
-        virtual_port: u16,
+        virtual_port: VirtualPort,
     ) -> anyhow::Result<tokio::sync::mpsc::Receiver<Vec<u8>>> {
         let existing = self.virtual_port_ip_tx.get(&virtual_port);
         if existing.is_some() {
@@ -111,7 +112,7 @@ impl WireGuardTunnel {
     }
 
     /// Releases the virtual interface from IP dispatch.
-    pub fn release_virtual_interface(&self, virtual_port: u16) {
+    pub fn release_virtual_interface(&self, virtual_port: VirtualPort) {
         self.virtual_port_ip_tx.remove(&virtual_port);
     }
 
@@ -296,8 +297,12 @@ impl WireGuardTunnel {
         TcpPacket::new_checked(segment)
             .ok()
             .map(|tcp| {
-                if self.virtual_port_ip_tx.get(&tcp.dst_port()).is_some() {
-                    RouteResult::Dispatch(tcp.dst_port())
+                if self
+                    .virtual_port_ip_tx
+                    .get(&VirtualPort(tcp.dst_port(), PortProtocol::Tcp))
+                    .is_some()
+                {
+                    RouteResult::Dispatch(VirtualPort(tcp.dst_port(), PortProtocol::Tcp))
                 } else if tcp.rst() {
                     RouteResult::Drop
                 } else {
@@ -347,7 +352,7 @@ fn trace_ip_packet(message: &str, packet: &[u8]) {
 
 enum RouteResult {
     /// Dispatch the packet to the virtual port.
-    Dispatch(u16),
+    Dispatch(VirtualPort),
     /// The packet is not routable, and should be sent to the sink interface.
     Sink,
     /// The packet is not routable, and can be safely ignored.

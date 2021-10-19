@@ -1,3 +1,4 @@
+use crate::virtual_iface::VirtualPort;
 use crate::wg::WireGuardTunnel;
 use anyhow::Context;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
@@ -15,7 +16,7 @@ pub struct VirtualIpDevice {
 }
 
 impl VirtualIpDevice {
-    pub fn new(virtual_port: u16, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
+    pub fn new(virtual_port: VirtualPort, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
         let ip_dispatch_rx = wg
             .register_virtual_interface(virtual_port)
             .with_context(|| "Failed to register IP dispatch for virtual interface")?;

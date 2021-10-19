@@ -1,19 +1,26 @@
-use crate::config::PortForwardConfig;
-use crate::port_pool::PortPool;
+use crate::config::{PortForwardConfig, PortProtocol};
 use crate::virtual_iface::tcp::TcpVirtualInterface;
-use crate::virtual_iface::VirtualInterfacePoll;
+use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::wg::WireGuardTunnel;
 use anyhow::Context;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
+use std::ops::Range;
+
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 const MAX_PACKET: usize = 65536;
+const MIN_PORT: u16 = 1000;
+const MAX_PORT: u16 = 60999;
+const PORT_RANGE: Range<u16> = MIN_PORT..MAX_PORT;
 
 /// Starts the server that listens on TCP connections.
 pub async fn tcp_proxy_server(
     port_forward: PortForwardConfig,
-    port_pool: Arc<PortPool>,
+    port_pool: Arc<TcpPortPool>,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(port_forward.source)
@@ -59,7 +66,7 @@ pub async fn tcp_proxy_server(
             }
 
             // Release port when connection drops
-            wg.release_virtual_interface(virtual_port);
+            wg.release_virtual_interface(VirtualPort(virtual_port, PortProtocol::Tcp));
             port_pool.release(virtual_port);
         });
     }
@@ -193,4 +200,57 @@ async fn handle_tcp_proxy_connection(
     trace!("[{}] TCP socket handler task terminated", virtual_port);
     abort.store(true, Ordering::Relaxed);
     Ok(())
+}
+
+/// A pool of virtual ports available for TCP connections.
+/// This structure is thread-safe and lock-free; you can use it safely in an `Arc`.
+pub struct TcpPortPool {
+    /// Remaining ports
+    inner: lockfree::queue::Queue<u16>,
+    /// Ports in use, with their associated IP channel sender.
+    taken: lockfree::set::Set<u16>,
+}
+
+impl Default for TcpPortPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TcpPortPool {
+    /// Initializes a new pool of virtual ports.
+    pub fn new() -> Self {
+        let inner = lockfree::queue::Queue::default();
+        let mut ports: Vec<u16> = PORT_RANGE.collect();
+        ports.shuffle(&mut thread_rng());
+        ports.into_iter().for_each(|p| inner.push(p) as ());
+        Self {
+            inner,
+            taken: lockfree::set::Set::new(),
+        }
+    }
+
+    /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
+    pub fn next(&self) -> anyhow::Result<u16> {
+        let port = self
+            .inner
+            .pop()
+            .with_context(|| "Virtual port pool is exhausted")?;
+        self.taken
+            .insert(port)
+            .ok()
+            .with_context(|| "Failed to insert taken")?;
+        Ok(port)
+    }
+
+    /// Releases a port back into the pool.
+    pub fn release(&self, port: u16) {
+        self.inner.push(port);
+        self.taken.remove(&port);
+    }
+
+    /// Whether the given port is in use by a virtual interface.
+    pub fn is_in_use(&self, port: u16) -> bool {
+        self.taken.contains(&port)
+    }
 }

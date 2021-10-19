@@ -6,12 +6,11 @@ use std::sync::Arc;
 use anyhow::Context;
 
 use crate::config::Config;
-use crate::port_pool::PortPool;
+use crate::tunnel::tcp::TcpPortPool;
 use crate::wg::WireGuardTunnel;
 
 pub mod config;
 pub mod ip_sink;
-pub mod port_pool;
 pub mod tunnel;
 pub mod virtual_device;
 pub mod virtual_iface;
@@ -21,7 +20,10 @@ pub mod wg;
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_args().with_context(|| "Failed to read config")?;
     init_logger(&config)?;
-    let port_pool = Arc::new(PortPool::new());
+
+    // Initialize the port pool for each protocol
+    let tcp_port_pool = Arc::new(TcpPortPool::new());
+    // TODO: udp_port_pool
 
     let wg = WireGuardTunnel::new(&config)
         .await
@@ -52,12 +54,12 @@ async fn main() -> anyhow::Result<()> {
 
         port_forwards
             .into_iter()
-            .map(|pf| (pf, wg.clone(), port_pool.clone()))
-            .for_each(move |(pf, wg, port_pool)| {
+            .map(|pf| (pf, wg.clone(), tcp_port_pool.clone()))
+            .for_each(move |(pf, wg, tcp_port_pool)| {
                 std::thread::spawn(move || {
                     let cpu_pool = tokio::runtime::Runtime::new().unwrap();
                     cpu_pool.block_on(async move {
-                        tunnel::port_forward(pf, source_peer_ip, port_pool, wg)
+                        tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, wg)
                             .await
                             .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
                     });

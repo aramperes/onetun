@@ -332,7 +332,7 @@ impl Display for PortForwardConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum PortProtocol {
     Tcp,
     Udp,
