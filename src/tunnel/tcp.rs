@@ -3,7 +3,7 @@ use crate::virtual_iface::tcp::TcpVirtualInterface;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::wg::WireGuardTunnel;
 use anyhow::Context;
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -235,8 +235,7 @@ impl TcpPortPool {
         let port = inner
             .queue
             .pop_front()
-            .with_context(|| "Virtual port pool is exhausted")?;
-        inner.taken.insert(port);
+            .with_context(|| "TCP virtual port pool is exhausted")?;
         Ok(port)
     }
 
@@ -244,15 +243,12 @@ impl TcpPortPool {
     pub async fn release(&self, port: u16) {
         let mut inner = self.inner.write().await;
         inner.queue.push_back(port);
-        inner.taken.remove(&port);
     }
 }
 
 /// Non thread-safe inner logic for TCP port pool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 struct TcpPortPoolInner {
     /// Remaining ports in the pool.
     queue: VecDeque<u16>,
-    /// Ports taken out of the pool.
-    taken: HashSet<u16>,
 }

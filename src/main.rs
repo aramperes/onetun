@@ -7,6 +7,7 @@ use anyhow::Context;
 
 use crate::config::Config;
 use crate::tunnel::tcp::TcpPortPool;
+use crate::tunnel::udp::UdpPortPool;
 use crate::wg::WireGuardTunnel;
 
 pub mod config;
@@ -23,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize the port pool for each protocol
     let tcp_port_pool = TcpPortPool::new();
-    // TODO: udp_port_pool
+    let udp_port_pool = UdpPortPool::new();
 
     let wg = WireGuardTunnel::new(&config)
         .await
@@ -54,12 +55,12 @@ async fn main() -> anyhow::Result<()> {
 
         port_forwards
             .into_iter()
-            .map(|pf| (pf, wg.clone(), tcp_port_pool.clone()))
-            .for_each(move |(pf, wg, tcp_port_pool)| {
+            .map(|pf| (pf, wg.clone(), tcp_port_pool.clone(), udp_port_pool.clone()))
+            .for_each(move |(pf, wg, tcp_port_pool, udp_port_pool)| {
                 std::thread::spawn(move || {
                     let cpu_pool = tokio::runtime::Runtime::new().unwrap();
                     cpu_pool.block_on(async move {
-                        tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, wg)
+                        tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg)
                             .await
                             .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
                     });

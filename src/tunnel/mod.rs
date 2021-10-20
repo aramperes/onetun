@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::config::{PortForwardConfig, PortProtocol};
 use crate::tunnel::tcp::TcpPortPool;
+use crate::tunnel::udp::UdpPortPool;
 use crate::wg::WireGuardTunnel;
 
 pub mod tcp;
@@ -13,6 +14,7 @@ pub async fn port_forward(
     port_forward: PortForwardConfig,
     source_peer_ip: IpAddr,
     tcp_port_pool: TcpPortPool,
+    udp_port_pool: UdpPortPool,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
     info!(
@@ -26,6 +28,6 @@ pub async fn port_forward(
 
     match port_forward.protocol {
         PortProtocol::Tcp => tcp::tcp_proxy_server(port_forward, tcp_port_pool, wg).await,
-        PortProtocol::Udp => udp::udp_proxy_server(port_forward, /* udp_port_pool, */ wg).await,
+        PortProtocol::Udp => udp::udp_proxy_server(port_forward, udp_port_pool, wg).await,
     }
 }
