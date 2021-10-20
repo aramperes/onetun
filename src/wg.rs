@@ -12,7 +12,7 @@ use crate::config::{Config, PortProtocol};
 use crate::virtual_iface::VirtualPort;
 
 /// The capacity of the channel for received IP packets.
-const DISPATCH_CAPACITY: usize = 1_000;
+pub const DISPATCH_CAPACITY: usize = 1_000;
 const MAX_PACKET: usize = 65536;
 
 /// A WireGuard tunnel. Encapsulates and decapsulates IP packets
@@ -88,14 +88,14 @@ impl WireGuardTunnel {
     pub fn register_virtual_interface(
         &self,
         virtual_port: VirtualPort,
-    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<Vec<u8>>> {
+        sender: tokio::sync::mpsc::Sender<Vec<u8>>,
+    ) -> anyhow::Result<()> {
         let existing = self.virtual_port_ip_tx.contains_key(&virtual_port);
         if existing {
             Err(anyhow::anyhow!("Cannot register virtual interface with virtual port {} because it is already registered", virtual_port))
         } else {
-            let (sender, receiver) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
             self.virtual_port_ip_tx.insert(virtual_port, sender);
-            Ok(receiver)
+            Ok(())
         }
     }
 

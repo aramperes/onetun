@@ -1,5 +1,5 @@
 use crate::virtual_iface::VirtualPort;
-use crate::wg::WireGuardTunnel;
+use crate::wg::{WireGuardTunnel, DISPATCH_CAPACITY};
 use anyhow::Context;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
@@ -16,9 +16,11 @@ pub struct VirtualIpDevice {
 }
 
 impl VirtualIpDevice {
+    /// Registers a virtual IP device for a single virtual client.
     pub fn new(virtual_port: VirtualPort, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
-        let ip_dispatch_rx = wg
-            .register_virtual_interface(virtual_port)
+        let (ip_dispatch_tx, ip_dispatch_rx) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
+
+        wg.register_virtual_interface(virtual_port, ip_dispatch_tx)
             .with_context(|| "Failed to register IP dispatch for virtual interface")?;
 
         Ok(Self { wg, ip_dispatch_rx })

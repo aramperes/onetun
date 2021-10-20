@@ -266,7 +266,14 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                 break;
             }
 
-            tokio::time::sleep(Duration::from_millis(1)).await;
+            match virtual_interface.poll_delay(&socket_set, loop_start) {
+                Some(smoltcp::time::Duration::ZERO) => {
+                    continue;
+                }
+                _ => {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            }
         }
         trace!("[{}] Virtual interface task terminated", self.virtual_port);
         self.abort.store(true, Ordering::Relaxed);
