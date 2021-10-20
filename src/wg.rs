@@ -27,7 +27,7 @@ pub struct WireGuardTunnel {
     /// The address of the public WireGuard endpoint (UDP).
     pub(crate) endpoint: SocketAddr,
     /// Maps virtual ports to the corresponding IP packet dispatcher.
-    virtual_port_ip_tx: lockfree::map::Map<VirtualPort, tokio::sync::mpsc::Sender<Vec<u8>>>,
+    virtual_port_ip_tx: dashmap::DashMap<VirtualPort, tokio::sync::mpsc::Sender<Vec<u8>>>,
     /// IP packet dispatcher for unroutable packets. `None` if not initialized.
     sink_ip_tx: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
 }
@@ -41,7 +41,7 @@ impl WireGuardTunnel {
             .await
             .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
         let endpoint = config.endpoint_addr;
-        let virtual_port_ip_tx = lockfree::map::Map::new();
+        let virtual_port_ip_tx = Default::default();
 
         Ok(Self {
             source_peer_ip,
@@ -89,8 +89,8 @@ impl WireGuardTunnel {
         &self,
         virtual_port: VirtualPort,
     ) -> anyhow::Result<tokio::sync::mpsc::Receiver<Vec<u8>>> {
-        let existing = self.virtual_port_ip_tx.get(&virtual_port);
-        if existing.is_some() {
+        let existing = self.virtual_port_ip_tx.contains_key(&virtual_port);
+        if existing {
             Err(anyhow::anyhow!("Cannot register virtual interface with virtual port {} because it is already registered", virtual_port))
         } else {
             let (sender, receiver) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
@@ -215,7 +215,7 @@ impl WireGuardTunnel {
                         RouteResult::Dispatch(port) => {
                             let sender = self.virtual_port_ip_tx.get(&port);
                             if let Some(sender_guard) = sender {
-                                let sender = sender_guard.val();
+                                let sender = sender_guard.value();
                                 match sender.send(packet.to_vec()).await {
                                     Ok(_) => {
                                         trace!(

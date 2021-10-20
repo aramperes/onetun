@@ -12,7 +12,7 @@ pub mod udp;
 pub async fn port_forward(
     port_forward: PortForwardConfig,
     source_peer_ip: IpAddr,
-    tcp_port_pool: Arc<TcpPortPool>,
+    tcp_port_pool: TcpPortPool,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
     info!(

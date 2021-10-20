@@ -13,8 +13,8 @@ pretty_env_logger = "0.3"
 anyhow = "1"
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "master" }
 tokio = { version = "1", features = ["full"] }
-lockfree = "0.5.1"
 futures = "0.3.17"
 rand = "0.8.4"
 nom = "7"
 async-trait = "0.1.51"
+dashmap = "4.0.2"

@@ -9,9 +9,11 @@ use crate::wg::WireGuardTunnel;
 const MAX_PACKET: usize = 65536;
 
 /// How long to keep the UDP peer address assigned to its virtual specified port, in seconds.
+/// TODO: Make this configurable by the CLI
 const UDP_TIMEOUT_SECONDS: u64 = 60;
 
 /// To prevent port-flooding, we set a limit on the amount of open ports per IP address.
+/// TODO: Make this configurable by the CLI
 const PORTS_PER_IP: usize = 100;
 
 pub async fn udp_proxy_server(

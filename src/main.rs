@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     init_logger(&config)?;
 
     // Initialize the port pool for each protocol
-    let tcp_port_pool = Arc::new(TcpPortPool::new());
+    let tcp_port_pool = TcpPortPool::new();
     // TODO: udp_port_pool
 
     let wg = WireGuardTunnel::new(&config)

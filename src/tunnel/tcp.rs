@@ -3,6 +3,7 @@ use crate::virtual_iface::tcp::TcpVirtualInterface;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::wg::WireGuardTunnel;
 use anyhow::Context;
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -20,7 +21,7 @@ const PORT_RANGE: Range<u16> = MIN_PORT..MAX_PORT;
 /// Starts the server that listens on TCP connections.
 pub async fn tcp_proxy_server(
     port_forward: PortForwardConfig,
-    port_pool: Arc<TcpPortPool>,
+    port_pool: TcpPortPool,
     wg: Arc<WireGuardTunnel>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(port_forward.source)
@@ -38,7 +39,7 @@ pub async fn tcp_proxy_server(
         // Assign a 'virtual port': this is a unique port number used to route IP packets
         // received from the WireGuard tunnel. It is the port number that the virtual client will
         // listen on.
-        let virtual_port = match port_pool.next() {
+        let virtual_port = match port_pool.next().await {
             Ok(port) => port,
             Err(e) => {
                 error!(
@@ -52,7 +53,7 @@ pub async fn tcp_proxy_server(
         info!("[{}] Incoming connection from {}", virtual_port, peer_addr);
 
         tokio::spawn(async move {
-            let port_pool = Arc::clone(&port_pool);
+            let port_pool = port_pool.clone();
             let result =
                 handle_tcp_proxy_connection(socket, virtual_port, port_forward, wg.clone()).await;
 
@@ -67,7 +68,7 @@ pub async fn tcp_proxy_server(
 
             // Release port when connection drops
             wg.release_virtual_interface(VirtualPort(virtual_port, PortProtocol::Tcp));
-            port_pool.release(virtual_port);
+            port_pool.release(virtual_port).await;
         });
     }
 }
@@ -203,12 +204,9 @@ async fn handle_tcp_proxy_connection(
 }
 
 /// A pool of virtual ports available for TCP connections.
-/// This structure is thread-safe and lock-free; you can use it safely in an `Arc`.
+#[derive(Clone)]
 pub struct TcpPortPool {
-    /// Remaining ports
-    inner: lockfree::queue::Queue<u16>,
-    /// Ports in use, with their associated IP channel sender.
-    taken: lockfree::set::Set<u16>,
+    inner: Arc<tokio::sync::RwLock<TcpPortPoolInner>>,
 }
 
 impl Default for TcpPortPool {
@@ -220,37 +218,41 @@ impl Default for TcpPortPool {
 impl TcpPortPool {
     /// Initializes a new pool of virtual ports.
     pub fn new() -> Self {
-        let inner = lockfree::queue::Queue::default();
+        let mut inner = TcpPortPoolInner::default();
         let mut ports: Vec<u16> = PORT_RANGE.collect();
         ports.shuffle(&mut thread_rng());
-        ports.into_iter().for_each(|p| inner.push(p) as ());
+        ports
+            .into_iter()
+            .for_each(|p| inner.queue.push_back(p) as ());
         Self {
-            inner,
-            taken: lockfree::set::Set::new(),
+            inner: Arc::new(tokio::sync::RwLock::new(inner)),
         }
     }
 
     /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
-    pub fn next(&self) -> anyhow::Result<u16> {
-        let port = self
-            .inner
-            .pop()
+    pub async fn next(&self) -> anyhow::Result<u16> {
+        let mut inner = self.inner.write().await;
+        let port = inner
+            .queue
+            .pop_front()
             .with_context(|| "Virtual port pool is exhausted")?;
-        self.taken
-            .insert(port)
-            .ok()
-            .with_context(|| "Failed to insert taken")?;
+        inner.taken.insert(port);
         Ok(port)
     }
 
     /// Releases a port back into the pool.
-    pub fn release(&self, port: u16) {
-        self.inner.push(port);
-        self.taken.remove(&port);
+    pub async fn release(&self, port: u16) {
+        let mut inner = self.inner.write().await;
+        inner.queue.push_back(port);
+        inner.taken.remove(&port);
     }
+}
 
-    /// Whether the given port is in use by a virtual interface.
-    pub fn is_in_use(&self, port: u16) -> bool {
-        self.taken.contains(&port)
-    }
+/// Non thread-safe inner logic for TCP port pool.
+#[derive(Debug, Clone, Default)]
+struct TcpPortPoolInner {
+    /// Remaining ports in the pool.
+    queue: VecDeque<u16>,
+    /// Ports taken out of the pool.
+    taken: HashSet<u16>,
 }
