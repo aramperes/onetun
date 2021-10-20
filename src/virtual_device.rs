@@ -5,6 +5,9 @@ use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use std::sync::Arc;
 
+/// The max transmission unit for WireGuard.
+const WG_MTU: usize = 1420;
+
 /// A virtual device that processes IP packets. IP packets received from the WireGuard endpoint
 /// are made available to this device using a channel receiver. IP packets sent from this device
 /// are asynchronously sent out to the WireGuard tunnel.
@@ -16,8 +19,16 @@ pub struct VirtualIpDevice {
 }
 
 impl VirtualIpDevice {
+    /// Initializes a new virtual IP device.
+    pub fn new(
+        wg: Arc<WireGuardTunnel>,
+        ip_dispatch_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    ) -> Self {
+        Self { wg, ip_dispatch_rx }
+    }
+
     /// Registers a virtual IP device for a single virtual client.
-    pub fn new(virtual_port: VirtualPort, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
+    pub fn new_direct(virtual_port: VirtualPort, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
         let (ip_dispatch_tx, ip_dispatch_rx) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
 
         wg.register_virtual_interface(virtual_port, ip_dispatch_tx)
@@ -60,7 +71,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
         cap.medium = Medium::Ip;
-        cap.max_transmission_unit = 1420;
+        cap.max_transmission_unit = WG_MTU;
         cap
     }
 }

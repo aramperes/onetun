@@ -90,13 +90,17 @@ impl WireGuardTunnel {
         virtual_port: VirtualPort,
         sender: tokio::sync::mpsc::Sender<Vec<u8>>,
     ) -> anyhow::Result<()> {
-        let existing = self.virtual_port_ip_tx.contains_key(&virtual_port);
+        let existing = self.is_registered(virtual_port);
         if existing {
             Err(anyhow::anyhow!("Cannot register virtual interface with virtual port {} because it is already registered", virtual_port))
         } else {
             self.virtual_port_ip_tx.insert(virtual_port, sender);
             Ok(())
         }
+    }
+
+    pub fn is_registered(&self, virtual_port: VirtualPort) -> bool {
+        self.virtual_port_ip_tx.contains_key(&virtual_port)
     }
 
     /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.

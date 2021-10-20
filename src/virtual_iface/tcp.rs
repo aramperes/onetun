@@ -75,7 +75,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         // Consumer for IP packets to send through the virtual interface
         // Initialize the interface
         let device =
-            VirtualIpDevice::new(VirtualPort(self.virtual_port, PortProtocol::Tcp), self.wg)
+            VirtualIpDevice::new_direct(VirtualPort(self.virtual_port, PortProtocol::Tcp), self.wg)
                 .with_context(|| "Failed to initialize TCP VirtualIpDevice")?;
         let mut virtual_interface = InterfaceBuilder::new(device)
             .ip_addrs([
