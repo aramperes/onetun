@@ -1,3 +1,5 @@
+<img align="right" alt="onetun" width="150" src=".github/onetun.png">
+
 # onetun
 
 A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations.
