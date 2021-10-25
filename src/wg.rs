@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use boringtun::noise::{Tunn, TunnResult};
 use log::Level;
-use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket};
+use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket, UdpPacket};
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 
@@ -90,17 +90,8 @@ impl WireGuardTunnel {
         virtual_port: VirtualPort,
         sender: tokio::sync::mpsc::Sender<Vec<u8>>,
     ) -> anyhow::Result<()> {
-        let existing = self.is_registered(virtual_port);
-        if existing {
-            Err(anyhow::anyhow!("Cannot register virtual interface with virtual port {} because it is already registered", virtual_port))
-        } else {
-            self.virtual_port_ip_tx.insert(virtual_port, sender);
-            Ok(())
-        }
-    }
-
-    pub fn is_registered(&self, virtual_port: VirtualPort) -> bool {
-        self.virtual_port_ip_tx.contains_key(&virtual_port)
+        self.virtual_port_ip_tx.insert(virtual_port, sender);
+        Ok(())
     }
 
     /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.
@@ -276,6 +267,7 @@ impl WireGuardTunnel {
                 .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.protocol() {
                     IpProtocol::Tcp => Some(self.route_tcp_segment(packet.payload())),
+                    IpProtocol::Udp => Some(self.route_udp_datagram(packet.payload())),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => Some(RouteResult::Drop),
                 })
@@ -287,6 +279,7 @@ impl WireGuardTunnel {
                 .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.next_header() {
                     IpProtocol::Tcp => Some(self.route_tcp_segment(packet.payload())),
+                    IpProtocol::Udp => Some(self.route_udp_datagram(packet.payload())),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => Some(RouteResult::Drop),
                 })
@@ -311,6 +304,24 @@ impl WireGuardTunnel {
                     RouteResult::Drop
                 } else {
                     RouteResult::Sink
+                }
+            })
+            .unwrap_or(RouteResult::Drop)
+    }
+
+    /// Makes a decision on the handling of an incoming UDP datagram.
+    fn route_udp_datagram(&self, datagram: &[u8]) -> RouteResult {
+        UdpPacket::new_checked(datagram)
+            .ok()
+            .map(|udp| {
+                if self
+                    .virtual_port_ip_tx
+                    .get(&VirtualPort(udp.dst_port(), PortProtocol::Udp))
+                    .is_some()
+                {
+                    RouteResult::Dispatch(VirtualPort(udp.dst_port(), PortProtocol::Udp))
+                } else {
+                    RouteResult::Drop
                 }
             })
             .unwrap_or(RouteResult::Drop)

@@ -175,7 +175,7 @@ impl UdpPortPool {
         }
     }
 
-    /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
+    /// Requests a free port from the pool. An error is returned if none is available (exhausted max capacity).
     pub async fn next(&self, peer_addr: SocketAddr) -> anyhow::Result<u16> {
         {
             let inner = self.inner.read().await;
@@ -183,6 +183,9 @@ impl UdpPortPool {
                 return Ok(*port);
             }
         }
+
+        // TODO: When the port pool is exhausted, it should re-queue the least recently used port.
+        // TODO: Limit number of ports in use by peer IP
 
         let mut inner = self.inner.write().await;
         let port = inner
