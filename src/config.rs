@@ -51,25 +51,25 @@ impl Config {
                     .takes_value(true)
                     .long("private-key")
                     .env("ONETUN_PRIVATE_KEY")
-                    .help("The private key of this peer. The corresponding public key should be registered in the Wireguard endpoint. \
+                    .help("The private key of this peer. The corresponding public key should be registered in the WireGuard endpoint. \
                     You can also use '--private-key-file' to specify a file containing the key instead."),
                 Arg::with_name("private-key-file")
                     .takes_value(true)
                     .long("private-key-file")
                     .env("ONETUN_PRIVATE_KEY_FILE")
-                    .help("The path to a file containing the private key of this peer. The corresponding public key should be registered in the Wireguard endpoint."),
+                    .help("The path to a file containing the private key of this peer. The corresponding public key should be registered in the WireGuard endpoint."),
                 Arg::with_name("endpoint-public-key")
                     .required(true)
                     .takes_value(true)
                     .long("endpoint-public-key")
                     .env("ONETUN_ENDPOINT_PUBLIC_KEY")
-                    .help("The public key of the Wireguard endpoint (remote)."),
+                    .help("The public key of the WireGuard endpoint (remote)."),
                 Arg::with_name("endpoint-addr")
                     .required(true)
                     .takes_value(true)
                     .long("endpoint-addr")
                     .env("ONETUN_ENDPOINT_ADDR")
-                    .help("The address (IP + port) of the Wireguard endpoint (remote). Example: 1.2.3.4:51820"),
+                    .help("The address (IP + port) of the WireGuard endpoint (remote). Example: 1.2.3.4:51820"),
                 Arg::with_name("source-peer-ip")
                     .required(true)
                     .takes_value(true)
