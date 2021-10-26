@@ -4,29 +4,30 @@ use std::time::Duration;
 use anyhow::Context;
 use boringtun::noise::{Tunn, TunnResult};
 use log::Level;
-use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket};
+use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet, TcpPacket, UdpPacket};
 use tokio::net::UdpSocket;
 use tokio::sync::RwLock;
 
-use crate::config::Config;
-use crate::MAX_PACKET;
+use crate::config::{Config, PortProtocol};
+use crate::virtual_iface::VirtualPort;
 
 /// The capacity of the channel for received IP packets.
-const DISPATCH_CAPACITY: usize = 1_000;
+pub const DISPATCH_CAPACITY: usize = 1_000;
+const MAX_PACKET: usize = 65536;
 
 /// A WireGuard tunnel. Encapsulates and decapsulates IP packets
 /// to be sent to and received from a remote UDP endpoint.
 /// This tunnel supports at most 1 peer IP at a time, but supports simultaneous ports.
 pub struct WireGuardTunnel {
-    source_peer_ip: IpAddr,
+    pub(crate) source_peer_ip: IpAddr,
     /// `boringtun` peer/tunnel implementation, used for crypto & WG protocol.
     peer: Box<Tunn>,
     /// The UDP socket for the public WireGuard endpoint to connect to.
     udp: UdpSocket,
     /// The address of the public WireGuard endpoint (UDP).
-    endpoint: SocketAddr,
+    pub(crate) endpoint: SocketAddr,
     /// Maps virtual ports to the corresponding IP packet dispatcher.
-    virtual_port_ip_tx: lockfree::map::Map<u16, tokio::sync::mpsc::Sender<Vec<u8>>>,
+    virtual_port_ip_tx: dashmap::DashMap<VirtualPort, tokio::sync::mpsc::Sender<Vec<u8>>>,
     /// IP packet dispatcher for unroutable packets. `None` if not initialized.
     sink_ip_tx: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
 }
@@ -40,7 +41,7 @@ impl WireGuardTunnel {
             .await
             .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
         let endpoint = config.endpoint_addr;
-        let virtual_port_ip_tx = lockfree::map::Map::new();
+        let virtual_port_ip_tx = Default::default();
 
         Ok(Self {
             source_peer_ip,
@@ -86,16 +87,11 @@ impl WireGuardTunnel {
     /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.
     pub fn register_virtual_interface(
         &self,
-        virtual_port: u16,
-    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<Vec<u8>>> {
-        let existing = self.virtual_port_ip_tx.get(&virtual_port);
-        if existing.is_some() {
-            Err(anyhow::anyhow!("Cannot register virtual interface with virtual port {} because it is already registered", virtual_port))
-        } else {
-            let (sender, receiver) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
-            self.virtual_port_ip_tx.insert(virtual_port, sender);
-            Ok(receiver)
-        }
+        virtual_port: VirtualPort,
+        sender: tokio::sync::mpsc::Sender<Vec<u8>>,
+    ) -> anyhow::Result<()> {
+        self.virtual_port_ip_tx.insert(virtual_port, sender);
+        Ok(())
     }
 
     /// Register a virtual interface (using its assigned virtual port) with the given IP packet `Sender`.
@@ -111,7 +107,7 @@ impl WireGuardTunnel {
     }
 
     /// Releases the virtual interface from IP dispatch.
-    pub fn release_virtual_interface(&self, virtual_port: u16) {
+    pub fn release_virtual_interface(&self, virtual_port: VirtualPort) {
         self.virtual_port_ip_tx.remove(&virtual_port);
     }
 
@@ -214,7 +210,7 @@ impl WireGuardTunnel {
                         RouteResult::Dispatch(port) => {
                             let sender = self.virtual_port_ip_tx.get(&port);
                             if let Some(sender_guard) = sender {
-                                let sender = sender_guard.val();
+                                let sender = sender_guard.value();
                                 match sender.send(packet.to_vec()).await {
                                     Ok(_) => {
                                         trace!(
@@ -271,6 +267,7 @@ impl WireGuardTunnel {
                 .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.protocol() {
                     IpProtocol::Tcp => Some(self.route_tcp_segment(packet.payload())),
+                    IpProtocol::Udp => Some(self.route_udp_datagram(packet.payload())),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => Some(RouteResult::Drop),
                 })
@@ -282,6 +279,7 @@ impl WireGuardTunnel {
                 .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
                 .map(|packet| match packet.next_header() {
                     IpProtocol::Tcp => Some(self.route_tcp_segment(packet.payload())),
+                    IpProtocol::Udp => Some(self.route_udp_datagram(packet.payload())),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => Some(RouteResult::Drop),
                 })
@@ -296,12 +294,34 @@ impl WireGuardTunnel {
         TcpPacket::new_checked(segment)
             .ok()
             .map(|tcp| {
-                if self.virtual_port_ip_tx.get(&tcp.dst_port()).is_some() {
-                    RouteResult::Dispatch(tcp.dst_port())
+                if self
+                    .virtual_port_ip_tx
+                    .get(&VirtualPort(tcp.dst_port(), PortProtocol::Tcp))
+                    .is_some()
+                {
+                    RouteResult::Dispatch(VirtualPort(tcp.dst_port(), PortProtocol::Tcp))
                 } else if tcp.rst() {
                     RouteResult::Drop
                 } else {
                     RouteResult::Sink
+                }
+            })
+            .unwrap_or(RouteResult::Drop)
+    }
+
+    /// Makes a decision on the handling of an incoming UDP datagram.
+    fn route_udp_datagram(&self, datagram: &[u8]) -> RouteResult {
+        UdpPacket::new_checked(datagram)
+            .ok()
+            .map(|udp| {
+                if self
+                    .virtual_port_ip_tx
+                    .get(&VirtualPort(udp.dst_port(), PortProtocol::Udp))
+                    .is_some()
+                {
+                    RouteResult::Dispatch(VirtualPort(udp.dst_port(), PortProtocol::Udp))
+                } else {
+                    RouteResult::Drop
                 }
             })
             .unwrap_or(RouteResult::Drop)
@@ -347,7 +367,7 @@ fn trace_ip_packet(message: &str, packet: &[u8]) {
 
 enum RouteResult {
     /// Dispatch the packet to the virtual port.
-    Dispatch(u16),
+    Dispatch(VirtualPort),
     /// The packet is not routable, and should be sent to the sink interface.
     Sink,
     /// The packet is not routable, and can be safely ignored.
