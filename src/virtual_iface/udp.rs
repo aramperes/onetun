@@ -161,8 +161,8 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                             });
 
                         let client_socket_handle = client_sockets.entry(client_port).or_insert_with(|| {
-                            let rx_meta = vec![UdpPacketMetadata::EMPTY; MAX_PACKET];
-                            let tx_meta = vec![UdpPacketMetadata::EMPTY; MAX_PACKET];
+                            let rx_meta = vec![UdpPacketMetadata::EMPTY; 10];
+                            let tx_meta = vec![UdpPacketMetadata::EMPTY; 10];
                             let rx_data = vec![0u8; MAX_PACKET];
                             let tx_data = vec![0u8; MAX_PACKET];
                             let udp_rx_buffer = UdpSocketBuffer::new(rx_meta, rx_data);

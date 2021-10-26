@@ -57,13 +57,10 @@ async fn main() -> anyhow::Result<()> {
             .into_iter()
             .map(|pf| (pf, wg.clone(), tcp_port_pool.clone(), udp_port_pool.clone()))
             .for_each(move |(pf, wg, tcp_port_pool, udp_port_pool)| {
-                std::thread::spawn(move || {
-                    let cpu_pool = tokio::runtime::Runtime::new().unwrap();
-                    cpu_pool.block_on(async move {
-                        tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg)
-                            .await
-                            .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
-                    });
+                tokio::spawn(async move {
+                    tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg)
+                        .await
+                        .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
                 });
             });
     }
