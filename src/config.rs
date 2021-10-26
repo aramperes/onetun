@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
+use std::fs::read_to_string;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
@@ -17,10 +18,13 @@ pub struct Config {
     pub(crate) source_peer_ip: IpAddr,
     pub(crate) keepalive_seconds: Option<u16>,
     pub(crate) log: String,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl Config {
     pub fn from_args() -> anyhow::Result<Self> {
+        let mut warnings = vec![];
+
         let matches = App::new("onetun")
             .author("Aram Peres <aram.peres@gmail.com>")
             .version(env!("CARGO_PKG_VERSION"))
@@ -43,11 +47,17 @@ impl Config {
                     \tlocalhost:8080:peer.intranet:8081:TCP\
                     "),
                 Arg::with_name("private-key")
-                    .required(true)
+                    .required_unless("private-key-file")
                     .takes_value(true)
                     .long("private-key")
                     .env("ONETUN_PRIVATE_KEY")
-                    .help("The private key of this peer. The corresponding public key should be registered in the Wireguard endpoint."),
+                    .help("The private key of this peer. The corresponding public key should be registered in the Wireguard endpoint. \
+                    You can also use '--private-key-file' to specify a file containing the key instead."),
+                Arg::with_name("private-key-file")
+                    .takes_value(true)
+                    .long("private-key-file")
+                    .env("ONETUN_PRIVATE_KEY_FILE")
+                    .help("The path to a file containing the private key of this peer. The corresponding public key should be registered in the Wireguard endpoint."),
                 Arg::with_name("endpoint-public-key")
                     .required(true)
                     .takes_value(true)
@@ -110,11 +120,38 @@ impl Config {
             .flatten()
             .collect();
 
+        // Read private key from file or CLI argument
+        let (group_readable, world_readable) = matches
+            .value_of("private-key-file")
+            .map(is_file_insecurely_readable)
+            .flatten()
+            .unwrap_or_default();
+        if group_readable {
+            warnings.push("Private key file is group-readable. This is insecure.".into());
+        }
+        if world_readable {
+            warnings.push("Private key file is world-readable. This is insecure.".into());
+        }
+
+        let private_key = if let Some(private_key_file) = matches.value_of("private-key-file") {
+            read_to_string(private_key_file)
+                .map(|s| s.trim().to_string())
+                .with_context(|| "Failed to read private key file")
+        } else {
+            if std::env::var("ONETUN_PRIVATE_KEY").is_err() {
+                warnings.push("Private key was passed using CLI. This is insecure. \
+                Use \"--private-key-file <file containing private key>\", or the \"ONETUN_PRIVATE_KEY\" env variable instead.".into());
+            }
+            matches
+                .value_of("private-key")
+                .map(String::from)
+                .with_context(|| "Missing private key")
+        }?;
+
         Ok(Self {
             port_forwards,
             private_key: Arc::new(
-                parse_private_key(matches.value_of("private-key"))
-                    .with_context(|| "Invalid private key")?,
+                parse_private_key(&private_key).with_context(|| "Invalid private key")?,
             ),
             endpoint_public_key: Arc::new(
                 parse_public_key(matches.value_of("endpoint-public-key"))
@@ -127,6 +164,7 @@ impl Config {
             keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
             log: matches.value_of("log").unwrap_or_default().into(),
+            warnings,
         })
     }
 }
@@ -145,11 +183,9 @@ fn parse_ip(s: Option<&str>) -> anyhow::Result<IpAddr> {
         .with_context(|| "Invalid IP address")
 }
 
-fn parse_private_key(s: Option<&str>) -> anyhow::Result<X25519SecretKey> {
-    s.with_context(|| "Missing private key")?
-        .parse::<X25519SecretKey>()
+fn parse_private_key(s: &str) -> anyhow::Result<X25519SecretKey> {
+    s.parse::<X25519SecretKey>()
         .map_err(|e| anyhow::anyhow!("{}", e))
-        .with_context(|| "Invalid private key")
 }
 
 fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
@@ -171,6 +207,21 @@ fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
     } else {
         Ok(None)
     }
+}
+
+#[cfg(unix)]
+fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
+    use std::fs::File;
+    use std::os::unix::fs::MetadataExt;
+
+    let mode = File::open(&path).ok()?.metadata().ok()?.mode();
+    Some((mode & 0o40 > 0, mode & 0o4 > 0))
+}
+
+#[cfg(not(unix))]
+fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
+    // No good way to determine permissions on non-Unix target
+    None
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

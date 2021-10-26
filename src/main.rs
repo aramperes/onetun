@@ -22,6 +22,10 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::from_args().with_context(|| "Failed to read config")?;
     init_logger(&config)?;
 
+    for warning in &config.warnings {
+        warn!("{}", warning);
+    }
+
     // Initialize the port pool for each protocol
     let tcp_port_pool = TcpPortPool::new();
     let udp_port_pool = UdpPortPool::new();
