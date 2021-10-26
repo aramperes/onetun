@@ -8,8 +8,8 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 ## Use-case
 
 - You have an existing WireGuard endpoint (router), accessible using its UDP endpoint (typically port 51820); and
-- You have a peer on the WireGuard network, running a TCP server on a port accessible to the WireGuard network; and
-- You want to access this TCP service from a second computer, on which you can't install WireGuard because you
+- You have a peer on the WireGuard network, running a TCP or UDP service on a port accessible to the WireGuard network; and
+- You want to access this TCP or UDP service from a second computer, on which you can't install WireGuard because you
   can't (no root access) or don't want to (polluting OS configs).
 
 For example, this can be useful to forward a port from a Kubernetes cluster to a server behind WireGuard,
@@ -17,7 +17,7 @@ without needing to install WireGuard in a Pod.
 
 ## Usage
 
-**onetun** opens a TCP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
+**onetun** opens a TCP or UDP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
 WireGuard network. It requires no changes to your operating system's network interfaces: you don't need to have `root`
 access, or install any WireGuard tool on your local system for it to work.
 
@@ -25,12 +25,12 @@ The only prerequisite is to register a peer IP and public key on the remote Wire
 the WireGuard endpoint to trust the onetun peer and for packets to be routed.
 
 ```
-./onetun <SOURCE_ADDR> <DESTINATION_ADDR>                               \
-    --endpoint-addr <public WireGuard endpoint address>                 \
-    --endpoint-public-key <the public key of the peer on the endpoint>  \
-    --private-key <private key assigned to onetun>                      \
-    --source-peer-ip <IP assigned to onetun>                            \
-    --keep-alive <optional persistent keep-alive in seconds>            \
+./onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]  \
+    --endpoint-addr <public WireGuard endpoint address>                   \
+    --endpoint-public-key <the public key of the peer on the endpoint>    \
+    --private-key <private key assigned to onetun>                        \
+    --source-peer-ip <IP assigned to onetun>                              \
+    --keep-alive <optional persistent keep-alive in seconds>              \
     --log <optional log level, defaults to "info"
 ```
 
@@ -63,7 +63,7 @@ We want to access a web server on the friendly peer (`192.168.4.2`) on port `808
 local port, say `127.0.0.1:8080`, that will tunnel through WireGuard to reach the peer web server:
 
 ```shell
-./onetun 127.0.0.1:8080 192.168.4.2:8080                                  \
+./onetun 127.0.0.1:8080:192.168.4.2:8080                                  \
     --endpoint-addr 140.30.3.182:51820                                    \
     --endpoint-public-key 'PUB_****************************************'  \
     --private-key 'PRIV_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'          \
@@ -74,7 +74,7 @@ local port, say `127.0.0.1:8080`, that will tunnel through WireGuard to reach th
 You'll then see this log:
 
 ```
-INFO  onetun > Tunneling [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+INFO  onetun > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
 Which means you can now access the port locally!
@@ -82,6 +82,53 @@ Which means you can now access the port locally!
 ```
 $ curl 127.0.0.1:8080
 Hello world!
+```
+
+### Multiple tunnels in parallel
+
+**onetun** supports running multiple tunnels in parallel. For example:
+
+```
+$ ./onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [140.30.3.182:51820] as peer 192.168.4.3)
+```
+
+... would open TCP ports 8080 and 8081 locally, which forward to their respective ports on the different peers.
+
+### UDP Support
+
+**onetun** supports UDP forwarding. You can add `:UDP` at the end of the port-forward configuration, or `UDP,TCP` to support
+both protocols on the same port (note that this opens 2 separate tunnels, just on the same port)
+
+```
+$ ./onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
+INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+
+$ ./onetun 127.0.0.1:8080:192.168.4.2:8080:UDP,TCP
+INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+```
+
+Note: UDP support is totally experimental. You should read the UDP portion of the **Architecture** section before using
+it in any production capacity.
+
+### IPv6 Support
+
+**onetun** supports both IPv4 and IPv6. In fact, you can use onetun to forward some IP version to another, e.g. 6-to-4:
+
+```
+$ ./onetun [::1]:8080:192.168.4.2:8080
+INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+```
+
+Note that each tunnel can only support one "source" IP version and one "destination" IP version. If you want to support
+both IPv4 and IPv6 on the same port, you should create a second port-forward:
+
+```
+$ ./onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
+INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
 ## Download
@@ -149,6 +196,22 @@ the virtual client to read it. When the virtual client reads data, it simply pus
 
 This work is all made possible by [smoltcp](https://github.com/smoltcp-rs/smoltcp) and [boringtun](https://github.com/cloudflare/boringtun),
 so special thanks to the developers of those libraries.
+
+### UDP
+
+UDP support is experimental. Since UDP messages are stateless, there is no perfect way for onetun to know when to release the
+assigned virtual port back to the pool for a new peer to use. This would cause issues over time as running out of virtual ports
+would mean new datagrams get dropped. To alleviate this, onetun will cap the amount of ports used by one peer IP address;
+if another datagram comes in from a different port but with the same IP, the least recently used virtual port will be freed and assigned
+to the new peer port. At that point, any datagram packets destined for the reused virtual port will be routed to the new peer,
+and any datagrams received by the old peer will be dropped.
+
+In addition, in cases where many IPs are exhausting the UDP virtual port pool in tandem, and a totally new peer IP sends data,
+onetun will have to pick the least recently used virtual port from _any_ peer IP and reuse it. However, this is only allowed
+if the least recently used port hasn't been used for a certain amount of time. If all virtual ports are truly "active"
+(with at least one transmission within that time limit), the new datagram gets dropped due to exhaustion.
+
+All in all, I would not recommend using UDP forwarding for public services, since it's most likely prone to simple DoS or DDoS.
 
 ## License
 
