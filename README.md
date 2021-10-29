@@ -19,7 +19,7 @@ without needing to install WireGuard in a Pod.
 
 ## Usage
 
-**onetun** opens a TCP or UDP port on your local system, from which traffic is forwarded to a TCP port on a peer in your
+**onetun** opens a TCP or UDP port on your local system, from which traffic is forwarded to a port on a peer in your
 WireGuard network. It requires no changes to your operating system's network interfaces: you don't need to have `root`
 access, or install any WireGuard tool on your local system for it to work.
 
@@ -147,7 +147,7 @@ You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun
 
 ```shell
 docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
-       0.0.0.0:8080 192.168.4.2:8080 [...options...]
+       0.0.0.0:8080:192.168.4.2:8080 [...options...]
 ```
 
 You can also build onetun locally, using Rust:
