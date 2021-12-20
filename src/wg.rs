@@ -30,6 +30,8 @@ pub struct WireGuardTunnel {
     virtual_port_ip_tx: dashmap::DashMap<VirtualPort, tokio::sync::mpsc::Sender<Vec<u8>>>,
     /// IP packet dispatcher for unroutable packets. `None` if not initialized.
     sink_ip_tx: RwLock<Option<tokio::sync::mpsc::Sender<Vec<u8>>>>,
+    /// The max transmission unit for WireGuard.
+    pub(crate) max_transmission_unit: usize,
 }
 
 impl WireGuardTunnel {
@@ -53,6 +55,7 @@ impl WireGuardTunnel {
             endpoint,
             virtual_port_ip_tx,
             sink_ip_tx: RwLock::new(None),
+            max_transmission_unit: config.max_transmission_unit,
         })
     }
 

@@ -17,6 +17,7 @@ pub struct Config {
     pub(crate) endpoint_addr: SocketAddr,
     pub(crate) source_peer_ip: IpAddr,
     pub(crate) keepalive_seconds: Option<u16>,
+    pub(crate) max_transmission_unit: usize,
     pub(crate) log: String,
     pub(crate) warnings: Vec<String>,
 }
@@ -82,6 +83,13 @@ impl Config {
                     .long("keep-alive")
                     .env("ONETUN_KEEP_ALIVE")
                     .help("Configures a persistent keep-alive for the WireGuard tunnel, in seconds."),
+                Arg::with_name("max-transmission-unit")
+                    .required(false)
+                    .takes_value(true)
+                    .long("max-transmission-unit")
+                    .env("ONETUN_MTU")
+                    .default_value("1420")
+                    .help("Configures the max-transmission-unit (MTU) of the WireGuard tunnel."),
                 Arg::with_name("log")
                     .required(false)
                     .takes_value(true)
@@ -163,6 +171,8 @@ impl Config {
                 .with_context(|| "Invalid source peer IP")?,
             keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
+            max_transmission_unit: parse_mtu(matches.value_of("max-transmission-unit"))
+                .with_context(|| "Invalid max-transmission-unit value")?,
             log: matches.value_of("log").unwrap_or_default().into(),
             warnings,
         })
@@ -207,6 +217,12 @@ fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
     } else {
         Ok(None)
     }
+}
+
+fn parse_mtu(s: Option<&str>) -> anyhow::Result<usize> {
+    s.with_context(|| "Missing MTU")?
+        .parse()
+        .with_context(|| "Invalid MTU")
 }
 
 #[cfg(unix)]
