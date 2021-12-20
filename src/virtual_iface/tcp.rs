@@ -5,7 +5,7 @@ use crate::wg::WireGuardTunnel;
 use anyhow::Context;
 use async_trait::async_trait;
 use smoltcp::iface::InterfaceBuilder;
-use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer, TcpState};
+use smoltcp::socket::{TcpSocket, TcpSocketBuffer, TcpState};
 use smoltcp::wire::{IpAddress, IpCidr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -77,7 +77,10 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         let device =
             VirtualIpDevice::new_direct(VirtualPort(self.virtual_port, PortProtocol::Tcp), self.wg)
                 .with_context(|| "Failed to initialize TCP VirtualIpDevice")?;
-        let mut virtual_interface = InterfaceBuilder::new(device)
+
+        // there are always 2 sockets: 1 virtual client and 1 virtual server.
+        let mut sockets: [_; 2] = Default::default();
+        let mut virtual_interface = InterfaceBuilder::new(device, &mut sockets[..])
             .ip_addrs([
                 // Interface handles IP packets for the sender and recipient
                 IpCidr::new(IpAddress::from(source_peer_ip), 32),
@@ -112,11 +115,8 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             Ok(socket)
         };
 
-        // Socket set: there are always 2 sockets: 1 virtual client and 1 virtual server.
-        let mut socket_set_entries: [_; 2] = Default::default();
-        let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
-        let _server_handle = socket_set.add(server_socket?);
-        let client_handle = socket_set.add(client_socket?);
+        let _server_handle = virtual_interface.add_socket(server_socket?);
+        let client_handle = virtual_interface.add_socket(client_socket?);
 
         // Any data that wasn't sent because it was over the sending buffer limit
         let mut tx_extra = Vec::new();
@@ -137,11 +137,11 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             if shutdown {
                 // Shutdown: sends a RST packet.
                 trace!("[{}] Shutting down virtual interface", self.virtual_port);
-                let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
+                let client_socket = virtual_interface.get_socket::<TcpSocket>(client_handle);
                 client_socket.abort();
             }
 
-            match virtual_interface.poll(&mut socket_set, loop_start) {
+            match virtual_interface.poll(loop_start) {
                 Ok(processed) if processed => {
                     trace!(
                         "[{}] Virtual interface polled some packets to be processed",
@@ -158,7 +158,8 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             }
 
             {
-                let mut client_socket = socket_set.get::<TcpSocket>(client_handle);
+                let (client_socket, context) =
+                    virtual_interface.get_socket_and_context::<TcpSocket>(client_handle);
 
                 if !shutdown && client_socket.state() == TcpState::Closed && !has_connected {
                     // Not shutting down, but the client socket is closed, and the client never successfully connected.
@@ -166,6 +167,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         // Try to connect
                         client_socket
                             .connect(
+                                context,
                                 (
                                     IpAddress::from(self.port_forward.destination.ip()),
                                     self.port_forward.destination.port(),
@@ -266,7 +268,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                 break;
             }
 
-            match virtual_interface.poll_delay(&socket_set, loop_start) {
+            match virtual_interface.poll_delay(loop_start) {
                 Some(smoltcp::time::Duration::ZERO) => {
                     continue;
                 }

@@ -6,12 +6,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/cloudflare/boringtun", rev = "fbcf2689e7776a5af805c5a38feb5c8988829980", default-features = false }
 clap = { version = "2.33", default-features = false, features = ["suggestions"] }
 log = "0.4"
-pretty_env_logger = "0.3"
+pretty_env_logger = "0.4"
 anyhow = "1"
-smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "master" }
+smoltcp = { version = "0.8.0", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-udp", "socket-tcp"] }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.17"
 rand = "0.8.4"

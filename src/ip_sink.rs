@@ -1,7 +1,6 @@
 use crate::virtual_device::VirtualIpDevice;
 use crate::wg::WireGuardTunnel;
 use smoltcp::iface::InterfaceBuilder;
-use smoltcp::socket::SocketSet;
 use std::sync::Arc;
 use tokio::time::Duration;
 
@@ -13,13 +12,14 @@ pub async fn run_ip_sink_interface(wg: Arc<WireGuardTunnel>) -> ! {
         .expect("Failed to initialize VirtualIpDevice for sink interface");
 
     // No sockets on sink interface
-    let mut socket_set_entries: [_; 0] = Default::default();
-    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
-    let mut virtual_interface = InterfaceBuilder::new(device).ip_addrs([]).finalize();
+    let mut sockets: [_; 0] = Default::default();
+    let mut virtual_interface = InterfaceBuilder::new(device, &mut sockets[..])
+        .ip_addrs([])
+        .finalize();
 
     loop {
         let loop_start = smoltcp::time::Instant::now();
-        match virtual_interface.poll(&mut socket_set, loop_start) {
+        match virtual_interface.poll(loop_start) {
             Ok(processed) if processed => {
                 trace!("[SINK] Virtual interface polled some packets to be processed",);
                 tokio::time::sleep(Duration::from_millis(1)).await;
