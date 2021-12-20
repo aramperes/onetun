@@ -11,7 +11,7 @@ clap = { version = "2.33", default-features = false, features = ["suggestions"] 
 log = "0.4"
 pretty_env_logger = "0.3"
 anyhow = "1"
-smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "master" }
+smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", rev = "25c539bb7c96789270f032ede2a967cf0fe5cf57" }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3.17"
 rand = "0.8.4"
