@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use smoltcp::iface::InterfaceBuilder;
-use smoltcp::socket::{SocketHandle, SocketSet, UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
+use smoltcp::iface::{InterfaceBuilder, SocketHandle};
+use smoltcp::socket::{UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
 use smoltcp::wire::{IpAddress, IpCidr};
 
 use crate::config::PortForwardConfig;
@@ -56,7 +56,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
         let (base_ip_dispatch_tx, ip_dispatch_rx) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
 
         let device = VirtualIpDevice::new(self.wg.clone(), ip_dispatch_rx);
-        let mut virtual_interface = InterfaceBuilder::new(device)
+        let mut virtual_interface = InterfaceBuilder::new(device, vec![])
             .ip_addrs([
                 // Interface handles IP packets for the sender and recipient
                 IpCidr::new(source_peer_ip.into(), 32),
@@ -87,8 +87,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
             Ok(socket)
         };
 
-        let mut socket_set = SocketSet::new(vec![]);
-        let _server_handle = socket_set.add(server_socket?);
+        let _server_handle = virtual_interface.add_socket(server_socket?);
 
         // A map of virtual port to client socket.
         let mut client_sockets: HashMap<VirtualPort, SocketHandle> = HashMap::new();
@@ -107,7 +106,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                 } => {
                     let loop_start = smoltcp::time::Instant::now();
 
-                    match virtual_interface.poll(&mut socket_set, loop_start) {
+                    match virtual_interface.poll(loop_start) {
                         Ok(processed) if processed => {
                             trace!("UDP virtual interface polled some packets to be processed");
                         }
@@ -118,7 +117,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                     // Loop through each client socket and check if there is any data to send back
                     // to the real client.
                     for (virtual_port, client_socket_handle) in client_sockets.iter() {
-                        let mut client_socket = socket_set.get::<UdpSocket>(*client_socket_handle);
+                        let client_socket = virtual_interface.get_socket::<UdpSocket>(*client_socket_handle);
                         match client_socket.recv() {
                             Ok((data, _peer)) => {
                                 // Send the data back to the real client using MPSC channel
@@ -142,7 +141,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                         }
                     }
 
-                    next_poll = match virtual_interface.poll_delay(&socket_set, loop_start) {
+                    next_poll = match virtual_interface.poll_delay(loop_start) {
                         Some(smoltcp::time::Duration::ZERO) => None,
                         Some(delay) => Some(tokio::time::Instant::now() + Duration::from_millis(delay.millis())),
                         None => None,
@@ -178,10 +177,10 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                     );
                                 });
 
-                            socket_set.add(socket)
+                                virtual_interface.add_socket(socket)
                         });
 
-                        let mut client_socket = socket_set.get::<UdpSocket>(*client_socket_handle);
+                        let client_socket = virtual_interface.get_socket::<UdpSocket>(*client_socket_handle);
                         client_socket
                             .send_slice(
                                 &data,
