@@ -9,7 +9,7 @@ edition = "2018"
 boringtun = { git = "https://github.com/cloudflare/boringtun", rev = "fbcf2689e7776a5af805c5a38feb5c8988829980", default-features = false }
 clap = { version = "2.33", default-features = false, features = ["suggestions"] }
 log = "0.4"
-pretty_env_logger = "0.3"
+pretty_env_logger = "0.4"
 anyhow = "1"
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", rev = "25c539bb7c96789270f032ede2a967cf0fe5cf57" }
 tokio = { version = "1", features = ["full"] }
