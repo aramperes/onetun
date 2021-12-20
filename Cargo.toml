@@ -6,7 +6,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/cloudflare/boringtun", rev = "fbcf2689e7776a5af805c5a38feb5c8988829980" }
 clap = { version = "2.33", default-features = false, features = ["suggestions"] }
 log = "0.4"
 pretty_env_logger = "0.3"
