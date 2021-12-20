@@ -13,7 +13,9 @@ pub async fn run_ip_sink_interface(wg: Arc<WireGuardTunnel>) -> ! {
 
     // No sockets on sink interface
     let mut sockets: [_; 0] = Default::default();
-    let mut virtual_interface = InterfaceBuilder::new(device, &mut sockets[..]).ip_addrs([]).finalize();
+    let mut virtual_interface = InterfaceBuilder::new(device, &mut sockets[..])
+        .ip_addrs([])
+        .finalize();
 
     loop {
         let loop_start = smoltcp::time::Instant::now();

@@ -77,7 +77,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         let device =
             VirtualIpDevice::new_direct(VirtualPort(self.virtual_port, PortProtocol::Tcp), self.wg)
                 .with_context(|| "Failed to initialize TCP VirtualIpDevice")?;
-        
+
         // there are always 2 sockets: 1 virtual client and 1 virtual server.
         let mut sockets: [_; 2] = Default::default();
         let mut virtual_interface = InterfaceBuilder::new(device, &mut sockets[..])
@@ -158,7 +158,8 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             }
 
             {
-                let (client_socket, context) = virtual_interface.get_socket_and_context::<TcpSocket>(client_handle);
+                let (client_socket, context) =
+                    virtual_interface.get_socket_and_context::<TcpSocket>(client_handle);
 
                 if !shutdown && client_socket.state() == TcpState::Closed && !has_connected {
                     // Not shutting down, but the client socket is closed, and the client never successfully connected.
