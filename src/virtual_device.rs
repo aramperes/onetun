@@ -5,9 +5,6 @@ use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use std::sync::Arc;
 
-/// The max transmission unit for WireGuard.
-const WG_MTU: usize = 1420;
-
 /// A virtual device that processes IP packets. IP packets received from the WireGuard endpoint
 /// are made available to this device using a channel receiver. IP packets sent from this device
 /// are asynchronously sent out to the WireGuard tunnel.
@@ -71,7 +68,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
         cap.medium = Medium::Ip;
-        cap.max_transmission_unit = WG_MTU;
+        cap.max_transmission_unit = self.wg.max_transmission_unit;
         cap
     }
 }
