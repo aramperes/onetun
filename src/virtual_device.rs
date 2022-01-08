@@ -1,45 +1,51 @@
-use crate::virtual_iface::VirtualPort;
-use crate::wg::{WireGuardTunnel, DISPATCH_CAPACITY};
-use anyhow::Context;
+use crate::config::PortProtocol;
+use crate::events::{BusSender, Event};
+use crate::Bus;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
-/// A virtual device that processes IP packets. IP packets received from the WireGuard endpoint
-/// are made available to this device using a channel receiver. IP packets sent from this device
-/// are asynchronously sent out to the WireGuard tunnel.
+/// A virtual device that processes IP packets through smoltcp and WireGuard.
 pub struct VirtualIpDevice {
-    /// Tunnel to send IP packets to.
-    wg: Arc<WireGuardTunnel>,
+    /// Max transmission unit (bytes)
+    max_transmission_unit: usize,
     /// Channel receiver for received IP packets.
-    ip_dispatch_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    bus_sender: BusSender,
+    /// Local queue for packets received from the bus that need to go through the smoltcp interface.
+    process_queue: Arc<Mutex<VecDeque<Vec<u8>>>>,
 }
 
 impl VirtualIpDevice {
     /// Initializes a new virtual IP device.
-    pub fn new(
-        wg: Arc<WireGuardTunnel>,
-        ip_dispatch_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    ) -> Self {
-        Self { wg, ip_dispatch_rx }
-    }
+    pub fn new(protocol: PortProtocol, bus: Bus, max_transmission_unit: usize) -> Self {
+        let mut bus_endpoint = bus.new_endpoint();
+        let bus_sender = bus_endpoint.sender();
+        let process_queue = Arc::new(Mutex::new(VecDeque::new()));
 
-    /// Registers a virtual IP device for a single virtual client.
-    pub fn new_direct(virtual_port: VirtualPort, wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
-        let (ip_dispatch_tx, ip_dispatch_rx) = tokio::sync::mpsc::channel(DISPATCH_CAPACITY);
+        {
+            let process_queue = process_queue.clone();
+            tokio::spawn(async move {
+                loop {
+                    match bus_endpoint.recv().await {
+                        Event::InboundInternetPacket(ip_proto, data) if ip_proto == protocol => {
+                            let mut queue = process_queue
+                                .lock()
+                                .expect("Failed to acquire process queue lock");
+                            queue.push_back(data);
+                            bus_endpoint.send(Event::VirtualDeviceFed(ip_proto));
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
 
-        wg.register_virtual_interface(virtual_port, ip_dispatch_tx)
-            .with_context(|| "Failed to register IP dispatch for virtual interface")?;
-
-        Ok(Self { wg, ip_dispatch_rx })
-    }
-
-    pub async fn new_sink(wg: Arc<WireGuardTunnel>) -> anyhow::Result<Self> {
-        let ip_dispatch_rx = wg
-            .register_sink_interface()
-            .await
-            .with_context(|| "Failed to register IP dispatch for sink virtual interface")?;
-        Ok(Self { wg, ip_dispatch_rx })
+        Self {
+            bus_sender,
+            process_queue,
+            max_transmission_unit,
+        }
     }
 }
 
@@ -48,27 +54,34 @@ impl<'a> Device<'a> for VirtualIpDevice {
     type TxToken = TxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        match self.ip_dispatch_rx.try_recv() {
-            Ok(buffer) => Some((
+        let next = {
+            let mut queue = self
+                .process_queue
+                .lock()
+                .expect("Failed to acquire process queue lock");
+            queue.pop_front()
+        };
+        match next {
+            Some(buffer) => Some((
                 Self::RxToken { buffer },
                 Self::TxToken {
-                    wg: self.wg.clone(),
+                    sender: self.bus_sender.clone(),
                 },
             )),
-            Err(_) => None,
+            None => None,
         }
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {
         Some(TxToken {
-            wg: self.wg.clone(),
+            sender: self.bus_sender.clone(),
         })
     }
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut cap = DeviceCapabilities::default();
         cap.medium = Medium::Ip;
-        cap.max_transmission_unit = self.wg.max_transmission_unit;
+        cap.max_transmission_unit = self.max_transmission_unit;
         cap
     }
 }
@@ -89,7 +102,7 @@ impl smoltcp::phy::RxToken for RxToken {
 
 #[doc(hidden)]
 pub struct TxToken {
-    wg: Arc<WireGuardTunnel>,
+    sender: BusSender,
 }
 
 impl smoltcp::phy::TxToken for TxToken {
@@ -100,14 +113,7 @@ impl smoltcp::phy::TxToken for TxToken {
         let mut buffer = Vec::new();
         buffer.resize(len, 0);
         let result = f(&mut buffer);
-        tokio::spawn(async move {
-            match self.wg.send_ip_packet(&buffer).await {
-                Ok(_) => {}
-                Err(e) => {
-                    error!("Failed to send IP packet to WireGuard endpoint: {:?}", e);
-                }
-            }
-        });
+        self.sender.send(Event::OutboundInternetPacket(buffer));
         result
     }
 }

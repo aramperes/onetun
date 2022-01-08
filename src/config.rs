@@ -235,7 +235,7 @@ fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
 }
 
 #[cfg(not(unix))]
-fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
+fn is_file_insecurely_readable(_path: &str) -> Option<(bool, bool)> {
     // No good way to determine permissions on non-Unix target
     None
 }
@@ -399,9 +399,12 @@ impl Display for PortForwardConfig {
     }
 }
 
+/// Layer 7 protocols for ports.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum PortProtocol {
+    /// TCP
     Tcp,
+    /// UDP
     Udp,
 }
 

@@ -1,17 +1,17 @@
 use crate::config::{PortForwardConfig, PortProtocol};
-use crate::virtual_iface::tcp::TcpVirtualInterface;
-use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
-use crate::wg::WireGuardTunnel;
+use crate::virtual_iface::VirtualPort;
 use anyhow::Context;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use std::ops::Range;
+use std::time::Duration;
 
+use crate::events::{Bus, Event};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use tokio::io::AsyncWriteExt;
 
 const MAX_PACKET: usize = 65536;
 const MIN_PORT: u16 = 1000;
@@ -22,14 +22,13 @@ const PORT_RANGE: Range<u16> = MIN_PORT..MAX_PORT;
 pub async fn tcp_proxy_server(
     port_forward: PortForwardConfig,
     port_pool: TcpPortPool,
-    wg: Arc<WireGuardTunnel>,
+    bus: Bus,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(port_forward.source)
         .await
         .with_context(|| "Failed to listen on TCP proxy server")?;
 
     loop {
-        let wg = wg.clone();
         let port_pool = port_pool.clone();
         let (socket, peer_addr) = listener
             .accept()
@@ -52,10 +51,10 @@ pub async fn tcp_proxy_server(
 
         info!("[{}] Incoming connection from {}", virtual_port, peer_addr);
 
+        let bus = bus.clone();
         tokio::spawn(async move {
             let port_pool = port_pool.clone();
-            let result =
-                handle_tcp_proxy_connection(socket, virtual_port, port_forward, wg.clone()).await;
+            let result = handle_tcp_proxy_connection(socket, virtual_port, port_forward, bus).await;
 
             if let Err(e) = result {
                 error!(
@@ -66,8 +65,7 @@ pub async fn tcp_proxy_server(
                 info!("[{}] Connection closed by client", virtual_port);
             }
 
-            // Release port when connection drops
-            wg.release_virtual_interface(VirtualPort(virtual_port, PortProtocol::Tcp));
+            tokio::time::sleep(Duration::from_millis(100)).await; // Make sure the other tasks have time to process the event
             port_pool.release(virtual_port).await;
         });
     }
@@ -75,72 +73,26 @@ pub async fn tcp_proxy_server(
 
 /// Handles a new TCP connection with its assigned virtual port.
 async fn handle_tcp_proxy_connection(
-    socket: TcpStream,
-    virtual_port: u16,
+    mut socket: TcpStream,
+    virtual_port: VirtualPort,
     port_forward: PortForwardConfig,
-    wg: Arc<WireGuardTunnel>,
+    bus: Bus,
 ) -> anyhow::Result<()> {
-    // Abort signal for stopping the Virtual Interface
-    let abort = Arc::new(AtomicBool::new(false));
+    let mut endpoint = bus.new_endpoint();
+    endpoint.send(Event::ClientConnectionInitiated(port_forward, virtual_port));
 
-    // Signals that the Virtual Client is ready to send data
-    let (virtual_client_ready_tx, virtual_client_ready_rx) = tokio::sync::oneshot::channel::<()>();
-
-    // data_to_real_client_(tx/rx): This task reads the data from this mpsc channel to send back
-    // to the real client.
-    let (data_to_real_client_tx, mut data_to_real_client_rx) = tokio::sync::mpsc::channel(1_000);
-
-    // data_to_real_server_(tx/rx): This task sends the data received from the real client to the
-    // virtual interface (virtual server socket).
-    let (data_to_virtual_server_tx, data_to_virtual_server_rx) = tokio::sync::mpsc::channel(1_000);
-
-    // Spawn virtual interface
-    {
-        let abort = abort.clone();
-        let virtual_interface = TcpVirtualInterface::new(
-            virtual_port,
-            port_forward,
-            wg,
-            abort.clone(),
-            data_to_real_client_tx,
-            data_to_virtual_server_rx,
-            virtual_client_ready_tx,
-        );
-
-        tokio::spawn(async move {
-            virtual_interface.poll_loop().await.unwrap_or_else(|e| {
-                error!("Virtual interface poll loop failed unexpectedly: {}", e);
-                abort.store(true, Ordering::Relaxed);
-            })
-        });
-    }
-
-    // Wait for virtual client to be ready.
-    virtual_client_ready_rx
-        .await
-        .with_context(|| "Virtual client dropped before being ready.")?;
-    trace!("[{}] Virtual client is ready to send data", virtual_port);
-
+    let mut buffer = Vec::with_capacity(MAX_PACKET);
     loop {
         tokio::select! {
             readable_result = socket.readable() => {
                 match readable_result {
                     Ok(_) => {
-                        // Buffer for the individual TCP segment.
-                        let mut buffer = Vec::with_capacity(MAX_PACKET);
                         match socket.try_read_buf(&mut buffer) {
                             Ok(size) if size > 0 => {
-                                let data = &buffer[..size];
-                                debug!(
-                                    "[{}] Read {} bytes of TCP data from real client",
-                                    virtual_port, size
-                                );
-                                if let Err(e) = data_to_virtual_server_tx.send(data.to_vec()).await {
-                                    error!(
-                                        "[{}] Failed to dispatch data to virtual interface: {:?}",
-                                        virtual_port, e
-                                    );
-                                }
+                                let data = Vec::from(&buffer[..size]);
+                                endpoint.send(Event::LocalData(virtual_port, data));
+                                // Reset buffer
+                                buffer.clear();
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 continue;
@@ -163,43 +115,32 @@ async fn handle_tcp_proxy_connection(
                     }
                 }
             }
-            data_recv_result = data_to_real_client_rx.recv() => {
-                match data_recv_result {
-                    Some(data) => match socket.try_write(&data) {
-                        Ok(size) => {
-                            debug!(
-                                "[{}] Wrote {} bytes of TCP data to real client",
-                                virtual_port, size
-                            );
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            if abort.load(Ordering::Relaxed) {
+            event = endpoint.recv() => {
+                match event {
+                    Event::ClientConnectionDropped(e_vp) if e_vp == virtual_port => {
+                        // This connection is supposed to be closed, stop the task.
+                        break;
+                    }
+                    Event::RemoteData(e_vp, data) if e_vp == virtual_port => {
+                        // Have remote data to send to the local client
+                        let size = data.len();
+                        match socket.write(&data).await {
+                            Ok(size) => debug!("[{}] Sent {} bytes to local client", virtual_port, size),
+                            Err(e) => {
+                                error!("[{}] Failed to send {} bytes to local client: {:?}", virtual_port, size, e);
                                 break;
-                            } else {
-                                continue;
                             }
                         }
-                        Err(e) => {
-                            error!(
-                                "[{}] Failed to write to client TCP socket: {:?}",
-                                virtual_port, e
-                            );
-                        }
-                    },
-                    None => {
-                        if abort.load(Ordering::Relaxed) {
-                            break;
-                        } else {
-                            continue;
-                        }
-                    },
+                    }
+                    _ => {}
                 }
             }
         }
     }
 
-    trace!("[{}] TCP socket handler task terminated", virtual_port);
-    abort.store(true, Ordering::Relaxed);
+    // Notify other endpoints that this task has closed and no more data is to be sent to the local client
+    endpoint.send(Event::ClientConnectionDropped(virtual_port));
+
     Ok(())
 }
 
@@ -230,19 +171,19 @@ impl TcpPortPool {
     }
 
     /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
-    pub async fn next(&self) -> anyhow::Result<u16> {
+    pub async fn next(&self) -> anyhow::Result<VirtualPort> {
         let mut inner = self.inner.write().await;
         let port = inner
             .queue
             .pop_front()
             .with_context(|| "TCP virtual port pool is exhausted")?;
-        Ok(port)
+        Ok(VirtualPort::new(port, PortProtocol::Tcp))
     }
 
     /// Releases a port back into the pool.
-    pub async fn release(&self, port: u16) {
+    pub async fn release(&self, port: VirtualPort) {
         let mut inner = self.inner.write().await;
-        inner.queue.push_back(port);
+        inner.queue.push_back(port.num());
     }
 }
 
