@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::Context;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;

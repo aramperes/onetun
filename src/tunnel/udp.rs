@@ -1,22 +1,18 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Range;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::events::{Bus, Event};
 use anyhow::Context;
 use priority_queue::double_priority_queue::DoublePriorityQueue;
-use priority_queue::priority_queue::PriorityQueue;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::net::UdpSocket;
 
 use crate::config::{PortForwardConfig, PortProtocol};
-use crate::virtual_iface::udp::UdpVirtualInterface;
-use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
-use crate::wg::WireGuardTunnel;
+use crate::virtual_iface::VirtualPort;
 
 const MAX_PACKET: usize = 65536;
 const MIN_PORT: u16 = 1000;
@@ -210,13 +206,13 @@ impl UdpPortPool {
     pub async fn update_last_transmit(&self, port: VirtualPort) {
         let mut inner = self.inner.write().await;
         if let Some(peer) = inner.peer_addr_by_port.get(&port.num()).copied() {
-            let mut pq: &mut DoublePriorityQueue<u16, Instant> = inner
+            let pq: &mut DoublePriorityQueue<u16, Instant> = inner
                 .peer_port_usage
                 .entry(peer.ip())
                 .or_insert_with(Default::default);
             pq.push(port.num(), Instant::now());
         }
-        let mut pq: &mut DoublePriorityQueue<u16, Instant> = &mut inner.port_usage;
+        let pq: &mut DoublePriorityQueue<u16, Instant> = &mut inner.port_usage;
         pq.push(port.num(), Instant::now());
     }
 

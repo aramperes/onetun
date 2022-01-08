@@ -8,7 +8,6 @@ use crate::tunnel::udp::UdpPortPool;
 use crate::wg::WireGuardTunnel;
 
 pub mod tcp;
-#[allow(unused)]
 pub mod udp;
 
 pub async fn port_forward(
