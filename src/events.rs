@@ -124,7 +124,6 @@ impl BusEndpoint {
                         // If the event was sent by this endpoint, it is skipped
                         continue;
                     } else {
-                        trace!("#{} <- {}", self.id, event);
                         return event;
                     }
                 }
