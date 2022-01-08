@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -24,6 +25,45 @@ pub enum Event {
     OutboundInternetPacket(Vec<u8>),
     /// Notifies that a virtual device read an IP packet.
     VirtualDeviceFed(PortProtocol),
+}
+
+impl Display for Event {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::Dumb => {
+                write!(f, "Dumb{{}}")
+            }
+            Event::ClientConnectionInitiated(pf, vp) => {
+                write!(f, "ClientConnectionInitiated{{ pf={} vp={} }}", pf, vp)
+            }
+            Event::ClientConnectionDropped(vp) => {
+                write!(f, "ClientConnectionDropped{{ vp={} }}", vp)
+            }
+            Event::LocalData(pf, vp, data) => {
+                let size = data.len();
+                write!(f, "LocalData{{ pf={} vp={} size={} }}", pf, vp, size)
+            }
+            Event::RemoteData(vp, data) => {
+                let size = data.len();
+                write!(f, "RemoteData{{ vp={} size={} }}", vp, size)
+            }
+            Event::InboundInternetPacket(proto, data) => {
+                let size = data.len();
+                write!(
+                    f,
+                    "InboundInternetPacket{{ proto={} size={} }}",
+                    proto, size
+                )
+            }
+            Event::OutboundInternetPacket(data) => {
+                let size = data.len();
+                write!(f, "OutboundInternetPacket{{ size={} }}", size)
+            }
+            Event::VirtualDeviceFed(proto) => {
+                write!(f, "VirtualDeviceFed{{ proto={} }}", proto)
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -84,7 +124,7 @@ impl BusEndpoint {
                         // If the event was sent by this endpoint, it is skipped
                         continue;
                     } else {
-                        trace!("#{} <- {:?}", self.id, event);
+                        trace!("#{} <- {}", self.id, event);
                         return event;
                     }
                 }
@@ -111,7 +151,7 @@ pub struct BusSender {
 impl BusSender {
     /// Sends the event on the bus. Note that the messages sent by this endpoint won't reach itself.
     pub fn send(&self, event: Event) {
-        trace!("#{} -> {:?}", self.id, event);
+        trace!("#{} -> {}", self.id, event);
         match self.tx.send((self.id, event)) {
             Ok(_) => {}
             Err(_) => error!("Failed to send event to bus from endpoint #{}", self.id),
