@@ -18,25 +18,18 @@ const MAX_PACKET: usize = 65536;
 pub struct TcpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
-    device: VirtualIpDevice,
     bus: Bus,
 }
 
 impl TcpVirtualInterface {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
-    pub fn new(
-        port_forwards: Vec<PortForwardConfig>,
-        bus: Bus,
-        device: VirtualIpDevice,
-        source_peer_ip: IpAddr,
-    ) -> Self {
+    pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
         Self {
             port_forwards: port_forwards
                 .into_iter()
                 .filter(|f| matches!(f.protocol, PortProtocol::Tcp))
                 .collect(),
-            device,
             source_peer_ip,
             bus,
         }
@@ -68,25 +61,28 @@ impl TcpVirtualInterface {
         let socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
         Ok(socket)
     }
+
+    fn addresses(&self) -> Vec<IpCidr> {
+        let mut addresses = HashSet::new();
+        addresses.insert(IpAddress::from(self.source_peer_ip));
+        for config in self.port_forwards.iter() {
+            addresses.insert(IpAddress::from(config.destination.ip()));
+        }
+        addresses
+            .into_iter()
+            .map(|addr| IpCidr::new(addr, 32))
+            .collect()
+    }
 }
 
 #[async_trait]
 impl VirtualInterfacePoll for TcpVirtualInterface {
-    async fn poll_loop(self) -> anyhow::Result<()> {
+    async fn poll_loop(self, device: VirtualIpDevice) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
-        let addresses: Vec<IpCidr> = {
-            let mut addresses = HashSet::new();
-            addresses.insert(IpAddress::from(self.source_peer_ip));
-            for config in self.port_forwards.iter() {
-                addresses.insert(IpAddress::from(config.destination.ip()));
-            }
-            addresses
-                .into_iter()
-                .map(|addr| IpCidr::new(addr, 32))
-                .collect()
-        };
+        let addresses = self.addresses();
 
-        let mut iface = InterfaceBuilder::new(self.device, vec![])
+        // Create virtual interface (contains smoltcp state machine)
+        let mut iface = InterfaceBuilder::new(device, vec![])
             .ip_addrs(addresses)
             .finalize();
 
@@ -102,6 +98,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         // Bus endpoint to read events
         let mut endpoint = self.bus.new_endpoint();
 
+        // Maps virtual port to its client socket handle
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
@@ -146,10 +143,11 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                             );
                                         }
                                     }
+                                    break;
                                 } else if client_socket.state() == TcpState::CloseWait {
                                     client_socket.close();
+                                    break;
                                 }
-                                break;
                             }
                         }
                     }
@@ -163,8 +161,6 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     if !data.is_empty() {
                                         endpoint.send(Event::RemoteData(*virtual_port, data));
                                         break;
-                                    } else {
-                                        continue;
                                     }
                                 }
                                 Err(e) => {
@@ -182,6 +178,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         if client_socket.state() == TcpState::Closed {
                             endpoint.send(Event::ClientConnectionDropped(*virtual_port));
                             send_queue.remove(virtual_port);
+                            iface.remove_socket(*client_handle);
                             false
                         } else {
                             // Not closed, retain
@@ -235,7 +232,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 next_poll = None;
                             }
                         }
-                        Event::LocalData(virtual_port, data) if send_queue.contains_key(&virtual_port) => {
+                        Event::LocalData(_, virtual_port, data) if send_queue.contains_key(&virtual_port) => {
                             if let Some(send_queue) = send_queue.get_mut(&virtual_port) {
                                 send_queue.push_back(data);
                                 next_poll = None;

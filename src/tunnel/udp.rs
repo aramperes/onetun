@@ -48,7 +48,7 @@ pub async fn udp_proxy_server(
             to_send_result = next_udp_datagram(&socket, &mut buffer, port_pool.clone()) => {
                 match to_send_result {
                     Ok(Some((port, data))) => {
-                        endpoint.send(Event::LocalData(port, data));
+                        endpoint.send(Event::LocalData(port_forward, port, data));
                     }
                     Ok(None) => {
                         continue;
@@ -64,12 +64,12 @@ pub async fn udp_proxy_server(
             }
             event = endpoint.recv() => {
                 if let Event::RemoteData(port, data) = event {
-                    if let Some(peer_addr) = port_pool.get_peer_addr(port).await {
-                        if let Err(e) = socket.send_to(&data, peer_addr).await {
+                    if let Some(peer) = port_pool.get_peer_addr(port).await {
+                        if let Err(e) = socket.send_to(&data, peer).await {
                             error!(
                                 "[{}] Failed to send UDP datagram to real client ({}): {:?}",
                                 port,
-                                peer_addr,
+                                peer,
                                 e,
                             );
                         }

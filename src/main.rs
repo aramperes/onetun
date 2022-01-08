@@ -72,8 +72,8 @@ async fn main() -> anyhow::Result<()> {
 
         // Start TCP Virtual Interface
         let port_forwards = config.port_forwards.clone();
-        let iface = TcpVirtualInterface::new(port_forwards, bus, device, config.source_peer_ip);
-        tokio::spawn(async move { iface.poll_loop().await });
+        let iface = TcpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
+        tokio::spawn(async move { iface.poll_loop(device).await });
     }
 
     if config
@@ -88,8 +88,8 @@ async fn main() -> anyhow::Result<()> {
 
         // Start UDP Virtual Interface
         let port_forwards = config.port_forwards.clone();
-        let iface = UdpVirtualInterface::new(port_forwards, bus, device, config.source_peer_ip);
-        tokio::spawn(async move { iface.poll_loop().await });
+        let iface = UdpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
+        tokio::spawn(async move { iface.poll_loop(device).await });
     }
 
     {

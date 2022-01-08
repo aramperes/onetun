@@ -15,7 +15,7 @@ pub enum Event {
     /// A connection was dropped from the pool and should be closed in all interfaces.
     ClientConnectionDropped(VirtualPort),
     /// Data received by the local server that should be sent to the virtual server.
-    LocalData(VirtualPort, Vec<u8>),
+    LocalData(PortForwardConfig, VirtualPort, Vec<u8>),
     /// Data received by the remote server that should be sent to the local client.
     RemoteData(VirtualPort, Vec<u8>),
     /// IP packet received from the WireGuard tunnel that should be passed through the corresponding virtual device.
