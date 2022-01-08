@@ -152,7 +152,6 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                                 virtual_port, e
                                             );
                                         });
-                                    break;
                                 }
                             }
                         }
@@ -166,7 +165,6 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                 Ok((data, _peer)) => {
                                     if !data.is_empty() {
                                         endpoint.send(Event::RemoteData(*virtual_port, data.to_vec()));
-                                        break;
                                     }
                                 }
                                 Err(e) => {
