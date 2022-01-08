@@ -17,6 +17,7 @@ use crate::wg::WireGuardTunnel;
 
 pub mod config;
 pub mod events;
+pub mod pcap;
 pub mod tunnel;
 pub mod virtual_device;
 pub mod virtual_iface;
@@ -36,6 +37,12 @@ async fn main() -> anyhow::Result<()> {
     let udp_port_pool = UdpPortPool::new();
 
     let bus = Bus::default();
+
+    if let Some(pcap_file) = config.pcap_file.clone() {
+        // Start packet capture
+        let bus = bus.clone();
+        tokio::spawn(async move { pcap::capture(pcap_file, bus).await });
+    }
 
     let wg = WireGuardTunnel::new(&config, bus.clone())
         .await
