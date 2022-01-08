@@ -20,6 +20,7 @@ pub struct Config {
     pub(crate) max_transmission_unit: usize,
     pub(crate) log: String,
     pub(crate) warnings: Vec<String>,
+    pub(crate) pcap_file: Option<String>,
 }
 
 impl Config {
@@ -96,7 +97,13 @@ impl Config {
                     .long("log")
                     .env("ONETUN_LOG")
                     .default_value("info")
-                    .help("Configures the log level and format.")
+                    .help("Configures the log level and format."),
+                Arg::with_name("pcap")
+                    .required(false)
+                    .takes_value(true)
+                    .long("pcap")
+                    .env("ONETUN_PCAP")
+                    .help("Decrypts and captures IP packets on the WireGuard tunnel to a given output file.")
             ]).get_matches();
 
         // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` envs
@@ -174,6 +181,7 @@ impl Config {
             max_transmission_unit: parse_mtu(matches.value_of("max-transmission-unit"))
                 .with_context(|| "Invalid max-transmission-unit value")?,
             log: matches.value_of("log").unwrap_or_default().into(),
+            pcap_file: matches.value_of("pcap").map(String::from),
             warnings,
         })
     }

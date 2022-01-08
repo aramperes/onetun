@@ -133,6 +133,17 @@ INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
+### Packet Capture
+
+For debugging purposes, you can enable the capture of IP packets sent between onetun and the WireGuard peer.
+The output is a libpcap capture file that can be viewed with Wireshark.
+
+```
+$ ./onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
+INFO  onetun::pcap > Capturing WireGuard IP packets to wg.pcap
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+```
+
 ## Download
 
 Normally I would publish `onetun` to crates.io. However, it depends on some features
