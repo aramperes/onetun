@@ -32,3 +32,21 @@ pub async fn port_forward(
         PortProtocol::Udp => udp::udp_proxy_server(port_forward, udp_port_pool, bus).await,
     }
 }
+
+pub async fn remote_port_forward(
+    port_forward: PortForwardConfig,
+    _tcp_port_pool: TcpPortPool,
+    udp_port_pool: UdpPortPool,
+    wg: Arc<WireGuardTunnel>,
+    bus: Bus,
+) -> anyhow::Result<()> {
+    info!(
+        "Remote Tunneling {} [{}]<-[{}] (via [{}])",
+        port_forward.protocol, port_forward.destination, port_forward.source, &wg.endpoint,
+    );
+
+    match port_forward.protocol {
+        PortProtocol::Tcp => Ok(()), // TODO: Remote TCP forwarding
+        PortProtocol::Udp => udp::udp_proxy_server(port_forward, udp_port_pool, bus).await,
+    }
+}

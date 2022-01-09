@@ -1,6 +1,6 @@
 use anyhow::Context;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use crate::events::Event;
 use crate::{Bus, PortProtocol};
@@ -19,15 +19,25 @@ const MAX_PACKET: usize = 65536;
 pub struct UdpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
+    remote_port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
 }
 
 impl UdpVirtualInterface {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
-    pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
+    pub fn new(
+        port_forwards: Vec<PortForwardConfig>,
+        remote_port_forwards: Vec<PortForwardConfig>,
+        bus: Bus,
+        source_peer_ip: IpAddr,
+    ) -> Self {
         Self {
             port_forwards: port_forwards
+                .into_iter()
+                .filter(|f| matches!(f.protocol, PortProtocol::Udp))
+                .collect(),
+            remote_port_forwards: remote_port_forwards
                 .into_iter()
                 .filter(|f| matches!(f.protocol, PortProtocol::Udp))
                 .collect(),
@@ -114,14 +124,28 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
-        let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Vec<u8>)>> =
-            HashMap::new();
+        let mut send_queue: HashMap<VirtualPort, VecDeque<(SocketAddr, Vec<u8>)>> = HashMap::new();
+
+        // Create sockets for remote port forwards
+        for remote_port_forward in self.remote_port_forwards.iter() {
+            let virtual_port =
+                VirtualPort::new(remote_port_forward.source.port(), PortProtocol::Udp);
+            let client_socket = UdpVirtualInterface::new_client_socket(
+                remote_port_forward.source.ip(),
+                virtual_port,
+            )?;
+            let client_handle = iface.add_socket(client_socket);
+            port_client_handle_map.insert(virtual_port, client_handle);
+            send_queue.insert(virtual_port, VecDeque::new());
+        }
+
+        let mut wake = false;
 
         loop {
             tokio::select! {
-                _ = match (next_poll, port_client_handle_map.len()) {
-                    (None, 0) => tokio::time::sleep(Duration::MAX),
-                    (None, _) => tokio::time::sleep(Duration::ZERO),
+                _ = match (next_poll, wake) {
+                    (None, false) => tokio::time::sleep(Duration::MAX),
+                    (None, true) => tokio::time::sleep(Duration::ZERO),
                     (Some(until), _) => tokio::time::sleep_until(until),
                 } => {
                     let loop_start = smoltcp::time::Instant::now();
@@ -134,17 +158,16 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                         _ => {}
                     }
 
-                    // Find client socket send data to
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
                         let client_socket = iface.get_socket::<UdpSocket>(*client_handle);
                         if client_socket.can_send() {
                             if let Some(send_queue) = send_queue.get_mut(virtual_port) {
                                 let to_transfer = send_queue.pop_front();
-                                if let Some((port_forward, data)) = to_transfer {
+                                if let Some((destination, data)) = to_transfer {
                                     client_socket
                                         .send_slice(
                                             &data,
-                                            (IpAddress::from(port_forward.destination.ip()), port_forward.destination.port()).into(),
+                                            (IpAddress::from(destination.ip()), destination.port()).into(),
                                         )
                                         .unwrap_or_else(|e| {
                                             error!(
@@ -155,15 +178,11 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                 }
                             }
                         }
-                    }
-
-                    // Find client socket recv data from
-                    for (virtual_port, client_handle) in port_client_handle_map.iter() {
-                        let client_socket = iface.get_socket::<UdpSocket>(*client_handle);
                         if client_socket.can_recv() {
                             match client_socket.recv() {
-                                Ok((data, _peer)) => {
+                                Ok((data, peer)) => {
                                     if !data.is_empty() {
+                                        trace!("notifying remote data from peer: {}", peer);
                                         endpoint.send(Event::RemoteData(*virtual_port, data.to_vec()));
                                     }
                                 }
@@ -189,9 +208,11 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                 event = endpoint.recv() => {
                     match event {
                         Event::LocalData(port_forward, virtual_port, data) => {
+                            let destination = port_forward.destination;
+
                             if let Some(send_queue) = send_queue.get_mut(&virtual_port) {
                                 // Client socket already exists
-                                send_queue.push_back((port_forward, data));
+                                send_queue.push_back((destination, data));
                             } else {
                                 // Client socket does not exist
                                 let client_socket = UdpVirtualInterface::new_client_socket(self.source_peer_ip, virtual_port)?;
@@ -199,12 +220,14 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
 
                                 // Add handle to map
                                 port_client_handle_map.insert(virtual_port, client_handle);
-                                send_queue.insert(virtual_port, VecDeque::from(vec![(port_forward, data)]));
+                                send_queue.insert(virtual_port, VecDeque::from(vec![(destination, data)]));
                             }
                             next_poll = None;
+                            wake = true;
                         }
                         Event::VirtualDeviceFed(protocol) if protocol == PortProtocol::Udp => {
                             next_poll = None;
+                            wake = true;
                         }
                         _ => {}
                     }

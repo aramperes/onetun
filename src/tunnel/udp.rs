@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Range;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -34,7 +35,22 @@ pub async fn udp_proxy_server(
     bus: Bus,
 ) -> anyhow::Result<()> {
     let mut endpoint = bus.new_endpoint();
-    let socket = UdpSocket::bind(port_forward.source)
+
+    // Remote port forwards bind on localhost. Regular port forwards bind on the given source.
+    let bind = if port_forward.remote {
+        port_pool
+            .reserve(port_forward.source.port(), port_forward.destination)
+            .await
+            .with_context(|| "Failed to assign virtual port for remote UDP port forward")?;
+        match port_forward.source.ip() {
+            IpAddr::V4(_) => SocketAddr::from((IpAddr::from_str("0.0.0.0").unwrap(), 0)),
+            IpAddr::V6(_) => SocketAddr::from((IpAddr::from_str("[::]").unwrap(), 0)),
+        }
+    } else {
+        port_forward.source
+    };
+
+    let socket = UdpSocket::bind(bind)
         .await
         .with_context(|| "Failed to bind on UDP proxy address")?;
 
@@ -61,6 +77,7 @@ pub async fn udp_proxy_server(
             event = endpoint.recv() => {
                 if let Event::RemoteData(port, data) = event {
                     if let Some(peer) = port_pool.get_peer_addr(port).await {
+                        trace!("Sending {} bytes to real client ({}->{})", data.len(), socket.local_addr().unwrap(), peer);
                         if let Err(e) = socket.send_to(&data, peer).await {
                             error!(
                                 "[{}] Failed to send UDP datagram to real client ({}): {:?}",
@@ -137,6 +154,14 @@ impl UdpPortPool {
         Self {
             inner: Arc::new(tokio::sync::RwLock::new(inner)),
         }
+    }
+
+    /// Takes the given port out of the pool, marking it with the given peer address, for an unlimited amount of time.
+    pub async fn reserve(&self, port: u16, peer_addr: SocketAddr) -> anyhow::Result<VirtualPort> {
+        let mut inner = self.inner.write().await;
+        inner.port_by_peer_addr.insert(peer_addr, port);
+        inner.peer_addr_by_port.insert(port, peer_addr);
+        Ok(VirtualPort::new(port, PortProtocol::Udp))
     }
 
     /// Requests a free port from the pool. An error is returned if none is available (exhausted max capacity).

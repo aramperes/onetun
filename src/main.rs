@@ -99,7 +99,13 @@ async fn main() -> anyhow::Result<()> {
 
         // Start UDP Virtual Interface
         let port_forwards = config.port_forwards.clone();
-        let iface = UdpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
+        let remote_port_forwards = config.remote_port_forwards.clone();
+        let iface = UdpVirtualInterface::new(
+            port_forwards,
+            remote_port_forwards,
+            bus,
+            config.source_peer_ip,
+        );
         tokio::spawn(async move { iface.poll_loop(device).await });
     }
 
@@ -123,6 +129,29 @@ async fn main() -> anyhow::Result<()> {
                     tunnel::port_forward(pf, source_peer_ip, tcp_port_pool, udp_port_pool, wg, bus)
                         .await
                         .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
+                });
+            });
+    }
+
+    {
+        let remote_port_forwards = config.remote_port_forwards;
+
+        remote_port_forwards
+            .into_iter()
+            .map(|pf| {
+                (
+                    pf,
+                    wg.clone(),
+                    tcp_port_pool.clone(),
+                    udp_port_pool.clone(),
+                    bus.clone(),
+                )
+            })
+            .for_each(move |(pf, wg, tcp_port_pool, udp_port_pool, bus)| {
+                tokio::spawn(async move {
+                    tunnel::remote_port_forward(pf, tcp_port_pool, udp_port_pool, wg, bus)
+                        .await
+                        .unwrap_or_else(|e| error!("Remote port-forward failed for {} : {}", pf, e))
                 });
             });
     }

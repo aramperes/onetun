@@ -468,7 +468,15 @@ impl PortForwardConfig {
 
 impl Display for PortForwardConfig {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}", self.source, self.destination, self.protocol)
+        if self.remote {
+            write!(
+                f,
+                "(remote){}:{}:{}",
+                self.source, self.destination, self.protocol
+            )
+        } else {
+            write!(f, "{}:{}:{}", self.source, self.destination, self.protocol)
+        }
     }
 }
 
