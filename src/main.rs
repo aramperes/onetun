@@ -87,6 +87,10 @@ async fn main() -> anyhow::Result<()> {
         .port_forwards
         .iter()
         .any(|pf| pf.protocol == PortProtocol::Udp)
+        || config
+            .remote_port_forwards
+            .iter()
+            .any(|pf| pf.protocol == PortProtocol::Udp)
     {
         // UDP device
         let bus = bus.clone();
