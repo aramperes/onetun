@@ -13,7 +13,6 @@ const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
 #[derive(Clone)]
 pub struct Config {
     pub port_forwards: Vec<PortForwardConfig>,
-    #[allow(dead_code)]
     pub remote_port_forwards: Vec<PortForwardConfig>,
     pub private_key: Arc<StaticSecret>,
     pub endpoint_public_key: Arc<PublicKey>,

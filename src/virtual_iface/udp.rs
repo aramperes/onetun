@@ -23,6 +23,7 @@ const MAX_PACKET: usize = 65536;
 pub struct UdpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
+    remote_port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
     sockets: SocketSet<'static>,
 }
@@ -30,9 +31,18 @@ pub struct UdpVirtualInterface {
 impl UdpVirtualInterface {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
-    pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
+    pub fn new(
+        port_forwards: Vec<PortForwardConfig>,
+        remote_port_forwards: Vec<PortForwardConfig>,
+        bus: Bus,
+        source_peer_ip: IpAddr,
+    ) -> Self {
         Self {
             port_forwards: port_forwards
+                .into_iter()
+                .filter(|f| matches!(f.protocol, PortProtocol::Udp))
+                .collect(),
+            remote_port_forwards: remote_port_forwards
                 .into_iter()
                 .filter(|f| matches!(f.protocol, PortProtocol::Udp))
                 .collect(),
@@ -129,11 +139,30 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
         let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Bytes)>> =
             HashMap::new();
 
+        // Create sockets for remote port forwards
+        for remote_port_forward in self.remote_port_forwards.iter() {
+            let virtual_port =
+                VirtualPort::new(remote_port_forward.source.port(), PortProtocol::Udp);
+            let client_socket = UdpVirtualInterface::new_client_socket(
+                remote_port_forward.source.ip(),
+                virtual_port,
+            )?;
+            debug!(
+                "Created remote client socket: {:?}",
+                client_socket.endpoint()
+            );
+            let client_handle = self.sockets.add(client_socket);
+            port_client_handle_map.insert(virtual_port, client_handle);
+            send_queue.insert(virtual_port, VecDeque::new());
+        }
+
+        let mut wake = false;
+
         loop {
             tokio::select! {
-                _ = match (next_poll, port_client_handle_map.len()) {
-                    (None, 0) => tokio::time::sleep(Duration::MAX),
-                    (None, _) => tokio::time::sleep(Duration::ZERO),
+                _ = match (next_poll, wake) {
+                    (None, false) => tokio::time::sleep(Duration::MAX),
+                    (None, true) => tokio::time::sleep(Duration::ZERO),
                     (Some(until), _) => tokio::time::sleep_until(until),
                 } => {
                     let loop_start = smoltcp::time::Instant::now();
@@ -147,11 +176,11 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                         if client_socket.can_send() {
                             if let Some(send_queue) = send_queue.get_mut(virtual_port) {
                                 let to_transfer = send_queue.pop_front();
-                                if let Some((port_forward, data)) = to_transfer {
+                                if let Some((destination, data)) = to_transfer {
                                     client_socket
                                         .send_slice(
                                             &data,
-                                            UdpMetadata::from(port_forward.destination),
+                                            UdpMetadata::from(destination.destination),
                                         )
                                         .unwrap_or_else(|e| {
                                             error!(
@@ -164,8 +193,9 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                         }
                         if client_socket.can_recv() {
                             match client_socket.recv() {
-                                Ok((data, _peer)) => {
+                                Ok((data, peer)) => {
                                     if !data.is_empty() {
+                                        trace!("notifying remote data from peer: {}", peer);
                                         endpoint.send(Event::RemoteData(*virtual_port, data.to_vec().into()));
                                     }
                                 }
@@ -204,9 +234,11 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                 send_queue.insert(virtual_port, VecDeque::from(vec![(port_forward, data)]));
                             }
                             next_poll = None;
+                            wake = true;
                         }
                         Event::VirtualDeviceFed(PortProtocol::Udp) => {
                             next_poll = None;
+                            wake = true;
                         }
                         _ => {}
                     }
