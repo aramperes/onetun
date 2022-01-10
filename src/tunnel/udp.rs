@@ -59,17 +59,33 @@ pub async fn udp_proxy_server(
                 }
             }
             event = endpoint.recv() => {
-                if let Event::RemoteData(port, data) = event {
-                    if let Some(peer) = port_pool.get_peer_addr(port).await {
-                        if let Err(e) = socket.send_to(&data, peer).await {
-                            error!(
-                                "[{}] Failed to send UDP datagram to real client ({}): {:?}",
-                                port,
-                                peer,
-                                e,
-                            );
+                if let Event::RemoteData(virtual_port, data) = event {
+                    if let Some(peer) = port_pool.get_peer_addr(virtual_port).await {
+                        // Have remote data to send to the local client
+                        if let Err(e) = socket.writable().await {
+                            error!("[{}] Failed to check if writable: {:?}", virtual_port, e);
                         }
-                        port_pool.update_last_transmit(port).await;
+                        let expected = data.len();
+                        let mut sent = 0;
+                        loop {
+                            if sent >= expected {
+                                break;
+                            }
+                            match socket.send_to(&data[sent..expected], peer).await {
+                                Ok(written) => {
+                                    debug!("[{}] Sent {} (expected {}) bytes to local client", virtual_port, written, expected);
+                                    sent += written;
+                                    if sent < expected {
+                                        debug!("[{}] Will try to resend remaining {} bytes to local client", virtual_port, (expected - written));
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("[{}] Failed to send {} bytes to local client: {:?}", virtual_port, expected, e);
+                                    break;
+                                }
+                            }
+                        }
+                        port_pool.update_last_transmit(virtual_port).await;
                     }
                 }
             }
