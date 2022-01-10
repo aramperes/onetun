@@ -134,7 +134,6 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                         _ => {}
                     }
 
-                    // Find client socket send data to
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
                         let client_socket = iface.get_socket::<UdpSocket>(*client_handle);
                         if client_socket.can_send() {
@@ -155,11 +154,6 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                 }
                             }
                         }
-                    }
-
-                    // Find client socket recv data from
-                    for (virtual_port, client_handle) in port_client_handle_map.iter() {
-                        let client_socket = iface.get_socket::<UdpSocket>(*client_handle);
                         if client_socket.can_recv() {
                             match client_socket.recv() {
                                 Ok((data, _peer)) => {
