@@ -144,6 +144,12 @@ INFO  onetun::pcap > Capturing WireGuard IP packets to wg.pcap
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
+To capture packets sent to and from the onetun local port, you must use an external tool like `tcpdump` with root access:
+
+```
+$ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8443'
+```
+
 ## Download
 
 Normally I would publish `onetun` to crates.io. However, it depends on some features
