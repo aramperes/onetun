@@ -164,6 +164,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         if client_socket.can_recv() {
                             match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
                                 Ok(data) => {
+                                    debug!("[{}] Received {} bytes from virtual server", virtual_port, data.len());
                                     if !data.is_empty() {
                                         endpoint.send(Event::RemoteData(*virtual_port, data));
                                     }
