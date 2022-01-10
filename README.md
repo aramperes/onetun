@@ -171,20 +171,27 @@ $ ./target/release/onetun
 
 ## Architecture
 
+**In short:** onetun uses [smoltcp's](https://github.com/smoltcp-rs/smoltcp) TCP/IP and UDP stack to generate IP packets
+using its state machine ("virtual interface"). The generated IP packets are
+encrypted by [boringtun](https://github.com/cloudflare/boringtun) and sent to the WireGuard endpoint. Encrypted IP packets received
+from the WireGuard endpoint are decrypted using boringtun and sent through the smoltcp virtual interface state machine.
+onetun creates "virtual sockets" in the virtual interface to forward data sent from inbound connections,
+as well as to receive data from the virtual interface to forward back to the local client.
+
+---
+
 onetun uses [tokio](https://github.com/tokio-rs/tokio), the async runtime, to listen for new TCP connections on the
 given port.
 
-When a client connects to the local TCP port, it uses [smoltcp](https://github.com/smoltcp-rs/smoltcp) to
-create a "virtual interface", with a "virtual client" and a "virtual server" for the connection. These "virtual"
-components are the crux of how onetun works. They essentially replace the host's TCP/IP stack with smoltcp's, which
-fully runs inside onetun. An ephemeral "virtual port" is also assigned to the connection, in order to route packets
-back to the right connection.
+When a client connects to the onetun's TCP port, a "virtual client" is
+created in a [smoltcp](https://github.com/smoltcp-rs/smoltcp) "virtual" TCP/IP interface, which runs fully inside the onetun
+process. An ephemeral "virtual port" is assigned to the "virtual client", which maps back to the local client.
 
-When the real client opens the connection, the virtual client socket opens a TCP connection to the virtual server.
-The virtual interface (implemented by smoltcp) in turn crafts the `SYN` segment and wraps it in an IP packet.
+When the real client opens the connection, the virtual client socket opens a TCP connection to the virtual server
+(a dummy socket bound to the remote host/port).  The virtual interface in turn crafts the `SYN` segment and wraps it in an IP packet.
 Because of how the virtual client and server are configured, the IP packet is crafted with a source address
 being the configured `source-peer-ip` (`192.168.4.3` in the example above),
-and the destination address is the remote peer's (`192.168.4.2`).
+and the destination address matches the port-forward's configured destination (`192.168.4.2`).
 
 By doing this, we let smoltcp handle the crafting of the IP packets, and the handling of the client's TCP states.
 Instead of actually sending those packets to the virtual server,
@@ -195,8 +202,8 @@ Once the WireGuard endpoint receives an encrypted IP packet, it decrypts it usin
 It reads the destination address, re-encrypts the IP packet using the matching peer's public key, and sends it off to
 the peer's UDP endpoint.
 
-The remote peer receives the encrypted IP and decrypts it. It can then read the inner payload (the TCP segment),
-forward it to the server's port, which handles the TCP segment. The server responds with `SYN-ACK`, which goes back through
+The peer receives the encrypted IP and decrypts it. It can then read the inner payload (the TCP segment),
+forward it to the server's port, which handles the TCP segment. The TCP server responds with `SYN-ACK`, which goes back through
 the peer's local WireGuard interface, gets encrypted, forwarded to the WireGuard endpoint, and then finally back to onetun's UDP port.
 
 When onetun receives an encrypted packet from the WireGuard endpoint, it decrypts it using boringtun.
