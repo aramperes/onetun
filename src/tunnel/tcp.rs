@@ -123,12 +123,27 @@ async fn handle_tcp_proxy_connection(
                     }
                     Event::RemoteData(e_vp, data) if e_vp == virtual_port => {
                         // Have remote data to send to the local client
-                        let size = data.len();
-                        match socket.write(&data).await {
-                            Ok(size) => debug!("[{}] Sent {} bytes to local client", virtual_port, size),
-                            Err(e) => {
-                                error!("[{}] Failed to send {} bytes to local client: {:?}", virtual_port, size, e);
+                        if let Err(e) = socket.writable().await {
+                            error!("[{}] Failed to check if writable: {:?}", virtual_port, e);
+                        }
+                        let expected = data.len();
+                        let mut sent = 0;
+                        loop {
+                            if sent >= expected {
                                 break;
+                            }
+                            match socket.write(&data[sent..expected]).await {
+                                Ok(written) => {
+                                    debug!("[{}] Sent {} (expected {}) bytes to local client", virtual_port, written, expected);
+                                    sent += written;
+                                    if sent < expected {
+                                        debug!("[{}] Will try to resend remaining {} bytes to local client", virtual_port, (expected - written));
+                                    }
+                                },
+                                Err(e) => {
+                                    error!("[{}] Failed to send {} bytes to local client: {:?}", virtual_port, expected, e);
+                                    break;
+                                }
                             }
                         }
                     }
