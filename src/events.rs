@@ -127,8 +127,11 @@ impl BusEndpoint {
                         return event;
                     }
                 }
-                Err(_) => {
-                    error!("Failed to read event bus from endpoint #{}", self.id);
+                Err(e) => {
+                    error!(
+                        "Failed to read event bus from endpoint #{}: {:?}",
+                        self.id, e
+                    );
                     return futures::future::pending().await;
                 }
             }

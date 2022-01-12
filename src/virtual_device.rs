@@ -3,8 +3,7 @@ use crate::events::{BusSender, Event};
 use crate::Bus;
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// A virtual device that processes IP packets through smoltcp and WireGuard.
 pub struct VirtualIpDevice {
@@ -13,7 +12,7 @@ pub struct VirtualIpDevice {
     /// Channel receiver for received IP packets.
     bus_sender: BusSender,
     /// Local queue for packets received from the bus that need to go through the smoltcp interface.
-    process_queue: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    process_queue: Arc<crossbeam_queue::ArrayQueue<Vec<u8>>>,
 }
 
 impl VirtualIpDevice {
@@ -21,7 +20,7 @@ impl VirtualIpDevice {
     pub fn new(protocol: PortProtocol, bus: Bus, max_transmission_unit: usize) -> Self {
         let mut bus_endpoint = bus.new_endpoint();
         let bus_sender = bus_endpoint.sender();
-        let process_queue = Arc::new(Mutex::new(VecDeque::new()));
+        let process_queue = Arc::new(crossbeam_queue::ArrayQueue::new(1000)); // TODO: Configurable?
 
         {
             let process_queue = process_queue.clone();
@@ -29,11 +28,11 @@ impl VirtualIpDevice {
                 loop {
                     match bus_endpoint.recv().await {
                         Event::InboundInternetPacket(ip_proto, data) if ip_proto == protocol => {
-                            let mut queue = process_queue
-                                .lock()
-                                .expect("Failed to acquire process queue lock");
-                            queue.push_back(data);
-                            bus_endpoint.send(Event::VirtualDeviceFed(ip_proto));
+                            if process_queue.push(data).is_err() {
+                                error!("VirtualIpDevice process queue full");
+                            } else {
+                                bus_endpoint.send(Event::VirtualDeviceFed(ip_proto));
+                            }
                         }
                         _ => {}
                     }
@@ -54,13 +53,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
     type TxToken = TxToken;
 
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
-        let next = {
-            let mut queue = self
-                .process_queue
-                .lock()
-                .expect("Failed to acquire process queue lock");
-            queue.pop_front()
-        };
+        let next = self.process_queue.pop();
         match next {
             Some(buffer) => Some((
                 Self::RxToken { buffer },
