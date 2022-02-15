@@ -4,6 +4,8 @@
 
 A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations.
 
+[![crates.io](https://img.shields.io/crates/v/onetun.svg)](https://crates.io/crates/onetun)
+[![MIT licensed](https://img.shields.io/crates/l/onetun.svg)](./LICENSE)
 [![Build status](https://github.com/aramperes/onetun/actions/workflows/build.yml/badge.svg)](https://github.com/aramperes/onetun/actions)
 [![Latest Release](https://img.shields.io/github/v/tag/aramperes/onetun?label=release)](https://github.com/aramperes/onetun/releases/latest)
 
@@ -17,6 +19,32 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 For example, this can be useful to forward a port from a Kubernetes cluster to a server behind WireGuard,
 without needing to install WireGuard in a Pod.
 
+## Download
+
+onetun is available to install from [crates.io](https://crates.io/crates/onetun) with Rust ≥1.55:
+
+```shell
+$ cargo install onetun
+```
+
+You can also download the binary for Windows, macOS (Intel), and Linux (amd64) from
+the [Releases](https://github.com/aramperes/onetun/releases) page.
+
+You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
+
+```shell
+docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
+       0.0.0.0:8080:192.168.4.2:8080 [...options...]
+```
+
+You can also build onetun locally, using Rust ≥1.55:
+
+```shell
+$ git clone https://github.com/aramperes/onetun && cd onetun
+$ cargo build --release
+$ ./target/release/onetun
+```
+
 ## Usage
 
 **onetun** opens a TCP or UDP port on your local system, from which traffic is forwarded to a port on a peer in your
@@ -27,7 +55,7 @@ The only prerequisite is to register a peer IP and public key on the remote Wire
 the WireGuard endpoint to trust the onetun peer and for packets to be routed.
 
 ```
-./onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]  \
+onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]    \
     --endpoint-addr <public WireGuard endpoint address>                   \
     --endpoint-public-key <the public key of the peer on the endpoint>    \
     --private-key <private key assigned to onetun>                        \
@@ -65,7 +93,7 @@ We want to access a web server on the friendly peer (`192.168.4.2`) on port `808
 local port, say `127.0.0.1:8080`, that will tunnel through WireGuard to reach the peer web server:
 
 ```shell
-./onetun 127.0.0.1:8080:192.168.4.2:8080                                  \
+onetun 127.0.0.1:8080:192.168.4.2:8080                                    \
     --endpoint-addr 140.30.3.182:51820                                    \
     --endpoint-public-key 'PUB_****************************************'  \
     --private-key 'PRIV_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'          \
@@ -91,7 +119,7 @@ Hello world!
 **onetun** supports running multiple tunnels in parallel. For example:
 
 ```
-$ ./onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
+$ onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -104,10 +132,10 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [
 both protocols on the same port (note that this opens 2 separate tunnels, just on the same port)
 
 ```
-$ ./onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
+$ onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
 INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 
-$ ./onetun 127.0.0.1:8080:192.168.4.2:8080:UDP,TCP
+$ onetun 127.0.0.1:8080:192.168.4.2:8080:UDP,TCP
 INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -120,7 +148,7 @@ it in any production capacity.
 **onetun** supports both IPv4 and IPv6. In fact, you can use onetun to forward some IP version to another, e.g. 6-to-4:
 
 ```
-$ ./onetun [::1]:8080:192.168.4.2:8080
+$ onetun [::1]:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
@@ -128,7 +156,7 @@ Note that each tunnel can only support one "source" IP version and one "destinat
 both IPv4 and IPv6 on the same port, you should create a second port-forward:
 
 ```
-$ ./onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
+$ onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -139,7 +167,7 @@ For debugging purposes, you can enable the capture of IP packets sent between on
 The output is a libpcap capture file that can be viewed with Wireshark.
 
 ```
-$ ./onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
+$ onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::pcap > Capturing WireGuard IP packets to wg.pcap
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -148,31 +176,6 @@ To capture packets sent to and from the onetun local port, you must use an exter
 
 ```
 $ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8443'
-```
-
-## Download
-
-Normally I would publish `onetun` to crates.io. However, it depends on some features
-in [smoltcp](https://github.com/smoltcp-rs/smoltcp) and
-[boringtun](https://github.com/cloudflare/boringtun) that haven't been published yet, so I'm forced to use their Git
-repos as dependencies for now.
-
-In the meantime, you can download the binary for Windows, macOS (Intel), and Linux (amd64) from
-the [Releases](https://github.com/aramperes/onetun/releases) page.
-
-You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
-
-```shell
-docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
-       0.0.0.0:8080:192.168.4.2:8080 [...options...]
-```
-
-You can also build onetun locally, using Rust:
-
-```shell
-$ git clone https://github.com/aramperes/onetun && cd onetun
-$ cargo build --release
-$ ./target/release/onetun
 ```
 
 ## Architecture
