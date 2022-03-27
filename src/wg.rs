@@ -224,24 +224,22 @@ impl WireGuardTunnel {
                 .ok()
                 // Only care if the packet is destined for this tunnel
                 .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
-                .map(|packet| match packet.protocol() {
+                .and_then(|packet| match packet.protocol() {
                     IpProtocol::Tcp => Some(PortProtocol::Tcp),
                     IpProtocol::Udp => Some(PortProtocol::Udp),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => None,
-                })
-                .flatten(),
+                }),
             Ok(IpVersion::Ipv6) => Ipv6Packet::new_checked(&packet)
                 .ok()
                 // Only care if the packet is destined for this tunnel
                 .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
-                .map(|packet| match packet.next_header() {
+                .and_then(|packet| match packet.next_header() {
                     IpProtocol::Tcp => Some(PortProtocol::Tcp),
                     IpProtocol::Udp => Some(PortProtocol::Udp),
                     // Unrecognized protocol, so we cannot determine where to route
                     _ => None,
-                })
-                .flatten(),
+                }),
             _ => None,
         }
     }

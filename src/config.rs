@@ -138,8 +138,7 @@ impl Config {
         // Read private key from file or CLI argument
         let (group_readable, world_readable) = matches
             .value_of("private-key-file")
-            .map(is_file_insecurely_readable)
-            .flatten()
+            .and_then(is_file_insecurely_readable)
             .unwrap_or_default();
         if group_readable {
             warnings.push("Private key file is group-readable. This is insecure.".into());
