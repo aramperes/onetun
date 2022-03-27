@@ -16,8 +16,7 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 - You want to access this TCP or UDP service from a second computer, on which you can't install WireGuard because you
   can't (no root access) or don't want to (polluting OS configs).
 
-For example, this can be useful to forward a port from a Kubernetes cluster to a server behind WireGuard,
-without needing to install WireGuard in a Pod.
+For example, this can be useful to access a port on your WireGuard network from a dev machine that doesn't have WireGuard installed.
 
 ## Download
 
@@ -33,8 +32,8 @@ the [Releases](https://github.com/aramperes/onetun/releases) page.
 You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
 
 ```shell
-docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
-       0.0.0.0:8080:192.168.4.2:8080 [...options...]
+$ docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
+    0.0.0.0:8080:192.168.4.2:8080 [...options...]
 ```
 
 You can also build onetun locally, using Rust ≥1.55:
@@ -61,7 +60,7 @@ onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]    \
     --private-key <private key assigned to onetun>                        \
     --source-peer-ip <IP assigned to onetun>                              \
     --keep-alive <optional persistent keep-alive in seconds>              \
-    --log <optional log level, defaults to "info"
+    --log <optional log level, defaults to "info">
 ```
 
 > Note: you can use environment variables for all of these flags. Use `onetun --help` for details.
@@ -175,7 +174,7 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [
 To capture packets sent to and from the onetun local port, you must use an external tool like `tcpdump` with root access:
 
 ```
-$ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8443'
+$ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8080'
 ```
 
 ## Architecture
@@ -244,4 +243,4 @@ All in all, I would not recommend using UDP forwarding for public services, sinc
 
 ## License
 
-MIT. See `LICENSE` for details.
+MIT License. See `LICENSE` for details. Copyright &copy; 2021-2022 Aram Peres.
