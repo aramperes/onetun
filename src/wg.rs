@@ -36,11 +36,15 @@ impl WireGuardTunnel {
         let source_peer_ip = config.source_peer_ip;
         let peer = Self::create_tunnel(config)?;
         let endpoint = config.endpoint_addr;
-        let udp = UdpSocket::bind(match endpoint {
-            SocketAddr::V4(_) => "0.0.0.0:0",
-            SocketAddr::V6(_) => "[::]:0",
-        })
-        .await
+        let udp = if let Some(host) = config.host_addr {
+            UdpSocket::bind(host).await
+        } else {
+            UdpSocket::bind(match endpoint {
+                SocketAddr::V4(_) => "0.0.0.0:0",
+                SocketAddr::V6(_) => "[::]:0",
+            })
+            .await
+        }
         .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
 
         Ok(Self {

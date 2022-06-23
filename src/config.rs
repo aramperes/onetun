@@ -19,6 +19,7 @@ pub struct Config {
     pub(crate) private_key: Arc<X25519SecretKey>,
     pub(crate) endpoint_public_key: Arc<X25519PublicKey>,
     pub(crate) endpoint_addr: SocketAddr,
+    pub(crate) host_addr: Option<SocketAddr>,
     pub(crate) source_peer_ip: IpAddr,
     pub(crate) keepalive_seconds: Option<u16>,
     pub(crate) max_transmission_unit: usize,
@@ -76,6 +77,12 @@ impl Config {
                     .long("endpoint-addr")
                     .env("ONETUN_ENDPOINT_ADDR")
                     .help("The address (IP + port) of the WireGuard endpoint (remote). Example: 1.2.3.4:51820"),
+                Arg::with_name("host-addr")
+                    .required(false)
+                    .takes_value(true)
+                    .long("host-addr")
+                    .env("ONETUN_HOST_ADDR")
+                    .help("The address (IP + port) for the tunnel to bind to. Example: 1.2.4:51820"),
                 Arg::with_name("source-peer-ip")
                     .required(true)
                     .takes_value(true)
@@ -237,6 +244,12 @@ impl Config {
             ),
             endpoint_addr: parse_addr(matches.value_of("endpoint-addr"))
                 .with_context(|| "Invalid endpoint address")?,
+            host_addr: match matches.value_of("host-addr") {
+                Some(host_addr) => {
+                    Some(parse_addr(Some(host_addr)).with_context(|| "Invalid host address")?)
+                }
+                None => None,
+            },
             source_peer_ip,
             keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
