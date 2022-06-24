@@ -2,7 +2,7 @@
 
 # onetun
 
-A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations.
+A cross-platform, user-space WireGuard port-forwarder that requires **no root-access**, and **no system network configurations**.
 
 [![crates.io](https://img.shields.io/crates/v/onetun.svg)](https://crates.io/crates/onetun)
 [![MIT licensed](https://img.shields.io/crates/l/onetun.svg)](./LICENSE)
@@ -13,7 +13,7 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 
 Access TCP or UDP services running on your WireGuard network, from devices that don't have WireGuard installed.
 
-Examples:
+For example,
 
 - Personal or shared computers where you can't install WireGuard (root)
 - IoT and mobile devices
