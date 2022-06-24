@@ -19,7 +19,7 @@ pub struct Config {
     pub(crate) private_key: Arc<X25519SecretKey>,
     pub(crate) endpoint_public_key: Arc<X25519PublicKey>,
     pub(crate) endpoint_addr: SocketAddr,
-    pub(crate) host_addr: SocketAddr,
+    pub(crate) endpoint_bind_addr: SocketAddr,
     pub(crate) source_peer_ip: IpAddr,
     pub(crate) keepalive_seconds: Option<u16>,
     pub(crate) max_transmission_unit: usize,
@@ -77,11 +77,11 @@ impl Config {
                     .long("endpoint-addr")
                     .env("ONETUN_ENDPOINT_ADDR")
                     .help("The address (IP + port) of the WireGuard endpoint (remote). Example: 1.2.3.4:51820"),
-                Arg::with_name("host-addr")
+                Arg::with_name("endpoint-bind-addr")
                     .required(false)
                     .takes_value(true)
-                    .long("host-addr")
-                    .env("ONETUN_HOST_ADDR")
+                    .long("endpoint-bind-addr")
+                    .env("ONETUN_ENDPOINT_BIND_ADDR")
                     .help("The address (IP + port) used to bind the local UDP socket for the WireGuard tunnel. Example: 1.2.3.4:30000. Defaults to 0.0.0.0:0 for IPv4 endpoints, or [::]:0 for IPv6 endpoints."),
                 Arg::with_name("source-peer-ip")
                     .required(true)
@@ -235,7 +235,7 @@ impl Config {
         let endpoint_addr = parse_addr(matches.value_of("endpoint-addr"))
             .with_context(|| "Invalid endpoint address")?;
 
-        let host_addr = if let Some(addr) = matches.value_of("host-addr") {
+        let endpoint_bind_addr = if let Some(addr) = matches.value_of("endpoint-bind-addr") {
             let addr = parse_addr(Some(addr)).with_context(|| "Invalid host address")?;
             // Make sure the host address and endpoint address are the same IP version
             if addr.ip().is_ipv6() && endpoint_addr.ip().is_ipv6()
@@ -265,7 +265,7 @@ impl Config {
                     .with_context(|| "Invalid endpoint public key")?,
             ),
             endpoint_addr,
-            host_addr,
+            endpoint_bind_addr,
             source_peer_ip,
             keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
