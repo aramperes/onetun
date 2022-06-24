@@ -82,7 +82,7 @@ impl Config {
                     .takes_value(true)
                     .long("host-addr")
                     .env("ONETUN_HOST_ADDR")
-                    .help("The address (IP + port) for the tunnel to bind to. Example: 1.2.4:51820"),
+                    .help("The address (IP + port) used to bind the local UDP socket for the WireGuard tunnel. Example: 1.2.3.4:30000. Defaults to 0.0.0.0:0 for IPv4 endpoints, or [::]:0 for IPv6 endpoints."),
                 Arg::with_name("source-peer-ip")
                     .required(true)
                     .takes_value(true)
