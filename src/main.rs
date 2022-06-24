@@ -17,12 +17,14 @@ use crate::wg::WireGuardTunnel;
 
 pub mod config;
 pub mod events;
+#[cfg(feature = "pcap")]
 pub mod pcap;
 pub mod tunnel;
 pub mod virtual_device;
 pub mod virtual_iface;
 pub mod wg;
 
+#[cfg(feature = "bin")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_args().with_context(|| "Failed to read config")?;
@@ -126,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
     futures::future::pending().await
 }
 
+#[cfg(feature = "bin")]
 fn init_logger(config: &Config) -> anyhow::Result<()> {
     let mut builder = pretty_env_logger::formatted_timed_builder();
     builder.parse_filters(&config.log);

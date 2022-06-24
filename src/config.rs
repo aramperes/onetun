@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
-use clap::{App, Arg};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
 
@@ -29,7 +28,10 @@ pub struct Config {
 }
 
 impl Config {
+    #[cfg(feature = "bin")]
     pub fn from_args() -> anyhow::Result<Self> {
+        use clap::{App, Arg};
+
         let mut warnings = vec![];
 
         let matches = App::new("onetun")
