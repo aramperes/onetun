@@ -238,9 +238,7 @@ impl Config {
         let endpoint_bind_addr = if let Some(addr) = matches.value_of("endpoint-bind-addr") {
             let addr = parse_addr(Some(addr)).with_context(|| "Invalid host address")?;
             // Make sure the host address and endpoint address are the same IP version
-            if addr.ip().is_ipv6() != endpoint_addr.ip().is_ipv6()
-                || (addr.ip().is_ipv4() != endpoint_addr.ip().is_ipv4())
-            {
+            if addr.ip().is_ipv4() != endpoint_addr.ip().is_ipv4() {
                 return Err(anyhow::anyhow!(
                     "Endpoint and bind addresses must be the same IP version"
                 ));
