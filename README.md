@@ -11,12 +11,13 @@ A cross-platform, user-space WireGuard port-forwarder that requires no system ne
 
 ## Use-case
 
-- You have an existing WireGuard endpoint (router), accessible using its UDP endpoint (typically port 51820); and
-- You have a peer on the WireGuard network, running a TCP or UDP service on a port accessible to the WireGuard network; and
-- You want to access this TCP or UDP service from a second computer, on which you can't install WireGuard because you
-  can't (no root access) or don't want to (polluting OS configs).
+Access TCP or UDP services running on your WireGuard network, from devices that don't have WireGuard installed.
 
-For example, this can be useful to access a port on your WireGuard network from a dev machine that doesn't have WireGuard installed.
+Examples:
+
+- Personal or shared computers where you can't install WireGuard (root)
+- IoT and mobile devices
+- Root-less containers
 
 ## Download
 
@@ -196,7 +197,7 @@ created in a [smoltcp](https://github.com/smoltcp-rs/smoltcp) "virtual" TCP/IP i
 process. An ephemeral "virtual port" is assigned to the "virtual client", which maps back to the local client.
 
 When the real client opens the connection, the virtual client socket opens a TCP connection to the virtual server
-(a dummy socket bound to the remote host/port).  The virtual interface in turn crafts the `SYN` segment and wraps it in an IP packet.
+(a dummy socket bound to the remote host/port). The virtual interface in turn crafts the `SYN` segment and wraps it in an IP packet.
 Because of how the virtual client and server are configured, the IP packet is crafted with a source address
 being the configured `source-peer-ip` (`192.168.4.3` in the example above),
 and the destination address matches the port-forward's configured destination (`192.168.4.2`).
