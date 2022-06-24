@@ -242,7 +242,7 @@ impl Config {
                 || (addr.ip().is_ipv4() != endpoint_addr.ip().is_ipv4())
             {
                 return Err(anyhow::anyhow!(
-                    "Host address and endpoint address must be the same IP version"
+                    "Endpoint and bind addresses must be the same IP version"
                 ));
             }
             addr
