@@ -6,7 +6,7 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use anyhow::Context;
-use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
+pub use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
 
