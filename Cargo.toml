@@ -14,7 +14,7 @@ repository = "https://github.com/aramperes/onetun"
 boringtun = { version = "0.4.0", default-features = false }
 log = "0.4"
 anyhow = "1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = [ "rt", "sync", "io-util", "net", "time", "fs", "macros" ] }
 futures = "0.3.17"
 rand = "0.8.4"
 nom = "7"
@@ -29,6 +29,6 @@ pretty_env_logger = { version = "0.4", optional = true }
 [features]
 pcap = []
 default = [ "bin" ]
-bin = [ "clap", "pretty_env_logger", "pcap" ]
+bin = [ "clap", "pretty_env_logger", "pcap", "tokio/rt-multi-thread" ]
 
 [lib]
