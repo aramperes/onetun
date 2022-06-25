@@ -28,6 +28,7 @@ pretty_env_logger = { version = "0.4", optional = true }
 
 [features]
 pcap = []
+ffi = []
 default = [ "bin" ]
 bin = [ "clap", "pretty_env_logger", "pcap", "tokio/rt-multi-thread" ]
 
