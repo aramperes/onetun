@@ -30,3 +30,5 @@ pretty_env_logger = { version = "0.4", optional = true }
 pcap = []
 default = [ "bin" ]
 bin = [ "clap", "pretty_env_logger", "pcap" ]
+
+[lib]

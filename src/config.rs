@@ -12,19 +12,19 @@ const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub(crate) port_forwards: Vec<PortForwardConfig>,
+    pub port_forwards: Vec<PortForwardConfig>,
     #[allow(dead_code)]
-    pub(crate) remote_port_forwards: Vec<PortForwardConfig>,
-    pub(crate) private_key: Arc<X25519SecretKey>,
-    pub(crate) endpoint_public_key: Arc<X25519PublicKey>,
-    pub(crate) endpoint_addr: SocketAddr,
-    pub(crate) endpoint_bind_addr: SocketAddr,
-    pub(crate) source_peer_ip: IpAddr,
-    pub(crate) keepalive_seconds: Option<u16>,
-    pub(crate) max_transmission_unit: usize,
-    pub(crate) log: String,
-    pub(crate) warnings: Vec<String>,
-    pub(crate) pcap_file: Option<String>,
+    pub remote_port_forwards: Vec<PortForwardConfig>,
+    pub private_key: Arc<X25519SecretKey>,
+    pub endpoint_public_key: Arc<X25519PublicKey>,
+    pub endpoint_addr: SocketAddr,
+    pub endpoint_bind_addr: SocketAddr,
+    pub source_peer_ip: IpAddr,
+    pub keepalive_seconds: Option<u16>,
+    pub max_transmission_unit: usize,
+    pub log: String,
+    pub warnings: Vec<String>,
+    pub pcap_file: Option<String>,
 }
 
 impl Config {
