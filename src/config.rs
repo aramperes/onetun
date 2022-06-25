@@ -278,7 +278,7 @@ impl Config {
     }
 }
 
-fn parse_addr(s: Option<&str>) -> anyhow::Result<SocketAddr> {
+pub(crate) fn parse_addr(s: Option<&str>) -> anyhow::Result<SocketAddr> {
     s.with_context(|| "Missing address")?
         .to_socket_addrs()
         .with_context(|| "Invalid address")?
@@ -286,7 +286,7 @@ fn parse_addr(s: Option<&str>) -> anyhow::Result<SocketAddr> {
         .with_context(|| "Could not lookup address")
 }
 
-fn parse_ip(s: Option<&str>) -> anyhow::Result<IpAddr> {
+pub(crate) fn parse_ip(s: Option<&str>) -> anyhow::Result<IpAddr> {
     s.with_context(|| "Missing IP")?
         .parse::<IpAddr>()
         .with_context(|| "Invalid IP address")
