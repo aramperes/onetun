@@ -21,7 +21,7 @@ For example,
 
 ## Download
 
-onetun is available to install from [crates.io](https://crates.io/crates/onetun) with Rust ≥1.55:
+onetun is available to install from [crates.io](https://crates.io/crates/onetun) with Rust ≥1.56:
 
 ```shell
 $ cargo install onetun
@@ -37,7 +37,7 @@ $ docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
     0.0.0.0:8080:192.168.4.2:8080 [...options...]
 ```
 
-You can also build onetun locally, using Rust ≥1.55:
+You can also build onetun locally, using Rust ≥1.56:
 
 ```shell
 $ git clone https://github.com/aramperes/onetun && cd onetun

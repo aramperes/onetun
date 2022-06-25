@@ -10,7 +10,7 @@ jobs:
       matrix:
         rust:
           - stable
-          - 1.55.0
+          - 1.56.0
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -39,7 +39,7 @@ jobs:
       matrix:
         rust:
           - stable
-          - 1.55.0
+          - 1.56.0
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
