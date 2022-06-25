@@ -20,7 +20,7 @@ use crate::{
 /// # Safety
 /// All pointers must be valid and not null.
 #[no_mangle]
-pub unsafe extern "C" fn onetun_start_tunnels(config: *mut config::Config, bus: *mut Bus) -> i32 {
+pub unsafe extern "C" fn onetun_start_tunnel(config: *mut config::Config, bus: *mut Bus) -> i32 {
     // Unbox the structs
     let config = *(std::boxed::Box::from_raw(config));
     let bus = *(std::boxed::Box::from_raw(bus));

@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-
 /**
  * The capacity of the channel for received IP packets.
  */
@@ -87,4 +86,4 @@ struct PortForwardConfig *onetun_new_port_forward(const char *source,
  * # Safety
  * All pointers must be valid and not null.
  */
-int32_t onetun_start_tunnels(struct Config *config, struct Bus *bus);
+int32_t onetun_start_tunnel(struct Config *config, struct Bus *bus);
