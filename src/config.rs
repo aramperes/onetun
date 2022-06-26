@@ -15,6 +15,7 @@ pub struct Config {
     pub port_forwards: Vec<PortForwardConfig>,
     #[allow(dead_code)]
     pub remote_port_forwards: Vec<PortForwardConfig>,
+    pub proxy_listen_addr: Option<SocketAddr>,
     pub private_key: Arc<X25519SecretKey>,
     pub endpoint_public_key: Arc<X25519PublicKey>,
     pub endpoint_addr: SocketAddr,
@@ -133,6 +134,13 @@ impl Config {
                     \t--remote 8080:[::1]:8081:TCP\n\
                     \t--remote 8080:google.com:80\
                     "),
+                Arg::with_name("proxy-listen-addr")
+                    .required(false)
+                    .takes_value(true)
+                    .long("http-proxy")
+                    .env("ONETUN_PROXY_LISTEN_ADDR")
+                    .help("Create an HTTP proxy server that listens on this address. All connections through the proxy will be forwarded through the WireGuard tunnel. \
+                    Currently, only the CONNECT method is supported, and only IP addresses are supported (the server will not do any DNS lookups)."),
             ]).get_matches();
 
         // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` envs
@@ -203,8 +211,13 @@ impl Config {
             port_forward.remote = true;
         }
 
-        if port_forwards.is_empty() && remote_port_forwards.is_empty() {
-            return Err(anyhow::anyhow!("No port forward configurations given."));
+        let proxy_listen_addr = match matches.value_of("proxy-listen-addr") {
+            Some(proxy_listen_addr) => Some(parse_addr(Some(proxy_listen_addr)).with_context(|| "Invalid proxy listen address")?),
+            None => None
+        };
+
+        if port_forwards.is_empty() && remote_port_forwards.is_empty() && proxy_listen_addr.is_none() {
+            return Err(anyhow::anyhow!("No port forward or http proxy configurations given."));
         }
 
         // Read private key from file or CLI argument
@@ -257,6 +270,7 @@ impl Config {
         Ok(Self {
             port_forwards,
             remote_port_forwards,
+            proxy_listen_addr,
             private_key: Arc::new(
                 parse_private_key(&private_key).with_context(|| "Invalid private key")?,
             ),

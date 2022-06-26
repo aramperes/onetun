@@ -3,7 +3,7 @@ use crate::virtual_iface::VirtualPort;
 use anyhow::Context;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 
 use std::ops::Range;
 use std::time::Duration;
@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::events::{Bus, Event};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const MAX_PACKET: usize = 65536;
 const MIN_PORT: u16 = 1000;
@@ -72,45 +72,39 @@ pub async fn tcp_proxy_server(
 }
 
 /// Handles a new TCP connection with its assigned virtual port.
-async fn handle_tcp_proxy_connection(
-    mut socket: TcpStream,
+pub async fn handle_tcp_proxy_connection<A>(
+    mut socket: A,
     virtual_port: VirtualPort,
     port_forward: PortForwardConfig,
     bus: Bus,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    A: AsyncReadExt + AsyncWriteExt + Unpin
+{
     let mut endpoint = bus.new_endpoint();
     endpoint.send(Event::ClientConnectionInitiated(port_forward, virtual_port));
 
-    let mut buffer = Vec::with_capacity(MAX_PACKET);
+    let mut buffer = vec![0; MAX_PACKET];
+
     loop {
         tokio::select! {
-            readable_result = socket.readable() => {
-                match readable_result {
-                    Ok(_) => {
-                        match socket.try_read_buf(&mut buffer) {
-                            Ok(size) if size > 0 => {
-                                let data = Vec::from(&buffer[..size]);
-                                endpoint.send(Event::LocalData(port_forward, virtual_port, data));
-                                // Reset buffer
-                                buffer.clear();
-                            }
-                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                                continue;
-                            }
-                            Err(e) => {
-                                error!(
-                                    "[{}] Failed to read from client TCP socket: {:?}",
-                                    virtual_port, e
-                                );
-                                break;
-                            }
-                            _ => {
-                                break;
-                            }
-                        }
+            read_result = socket.read(&mut buffer) => {
+                match read_result {
+                    Ok(size) if size > 0 => {
+                        let data = Vec::from(&buffer[..size]);
+                        endpoint.send(Event::LocalData(port_forward, virtual_port, data));
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        continue;
                     }
                     Err(e) => {
-                        error!("[{}] Failed to check if readable: {:?}", virtual_port, e);
+                        error!(
+                            "[{}] Failed to read from client TCP socket: {:?}",
+                            virtual_port, e
+                        );
+                        break;
+                    }
+                    _ => {
                         break;
                     }
                 }
@@ -123,9 +117,6 @@ async fn handle_tcp_proxy_connection(
                     }
                     Event::RemoteData(e_vp, data) if e_vp == virtual_port => {
                         // Have remote data to send to the local client
-                        if let Err(e) = socket.writable().await {
-                            error!("[{}] Failed to check if writable: {:?}", virtual_port, e);
-                        }
                         let expected = data.len();
                         let mut sent = 0;
                         loop {

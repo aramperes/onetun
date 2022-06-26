@@ -21,6 +21,7 @@ nom = "7"
 async-trait = "0.1.51"
 priority-queue = "1.2.0"
 smoltcp = { version = "0.8.0", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-udp", "socket-tcp"] }
+hyper = { version = "0.14", features = ["server", "http1", "tcp"] }
 
 # bin-only dependencies
 clap = { version = "2.33", default-features = false, features = ["suggestions"], optional = true }
