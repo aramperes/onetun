@@ -33,4 +33,4 @@ default = [ "bin" ]
 bin = [ "clap", "pretty_env_logger", "pcap", "tokio/rt-multi-thread" ]
 
 [lib]
-crate-type = [ "rlib", "staticlib" ]
+crate-type = [ "rlib", "staticlib", "cdylib" ]
