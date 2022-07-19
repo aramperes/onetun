@@ -17,6 +17,8 @@ use crate::wg::WireGuardTunnel;
 
 pub mod config;
 pub mod events;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 #[cfg(feature = "pcap")]
 pub mod pcap;
 pub mod tunnel;
