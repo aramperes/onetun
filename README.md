@@ -178,6 +178,16 @@ To capture packets sent to and from the onetun local port, you must use an exter
 $ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8080'
 ```
 
+### WireGuard Options
+
+By default, onetun will create the UDP socket to communicate with the WireGuard endpoint on all interfaces and on a dynamic port,
+i.e. `0.0.0.0:0` for IPv4 endpoints, or `[::]:0` for IPv6.
+You can bind to a static address instead using `--endpoint-bind-addr`:
+
+```
+$ onetun --endpoint-bind-addr 0.0.0.0:51820 --endpoint-addr 140.30.3.182:51820 [...]
+```
+
 ## Architecture
 
 **In short:** onetun uses [smoltcp's](https://github.com/smoltcp-rs/smoltcp) TCP/IP and UDP stack to generate IP packets
