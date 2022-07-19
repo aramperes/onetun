@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use crate::config::{PortForwardConfig, PortProtocol};
@@ -9,6 +9,7 @@ use crate::wg::WireGuardTunnel;
 
 pub mod tcp;
 pub mod udp;
+pub mod http_proxy;
 
 pub async fn port_forward(
     port_forward: PortForwardConfig,
@@ -31,4 +32,21 @@ pub async fn port_forward(
         PortProtocol::Tcp => tcp::tcp_proxy_server(port_forward, tcp_port_pool, bus).await,
         PortProtocol::Udp => udp::udp_proxy_server(port_forward, udp_port_pool, bus).await,
     }
+}
+
+pub async fn http_proxy_listen(
+    listen_addr: SocketAddr,
+    source_peer_ip: IpAddr,
+    tcp_port_pool: TcpPortPool,
+    wg: Arc<WireGuardTunnel>,
+    bus: Bus,
+) -> anyhow::Result<()> {
+    info!(
+        "HTTP proxy server listening on {} (forwarding through {} as peer {})",
+        listen_addr,
+        &wg.endpoint,
+        source_peer_ip
+    );
+
+    http_proxy::http_proxy_server(listen_addr, tcp_port_pool, bus).await
 }

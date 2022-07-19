@@ -66,6 +66,7 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
         .port_forwards
         .iter()
         .any(|pf| pf.protocol == PortProtocol::Tcp)
+        || config.proxy_listen_addr.is_some()
     {
         // TCP device
         let bus = bus.clone();
@@ -116,6 +117,15 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
                         .unwrap_or_else(|e| error!("Port-forward failed for {} : {}", pf, e))
                 });
             });
+    }
+
+    if let Some(proxy_listen_addr) = config.proxy_listen_addr {
+        let source_peer_ip = config.source_peer_ip;
+        tokio::spawn(async move {
+            tunnel::http_proxy_listen(proxy_listen_addr, source_peer_ip, tcp_port_pool.clone(), wg.clone(), bus.clone())
+                .await
+                .unwrap_or_else(|e| error!("HTTP Proxy Listen failed: {}", e));
+        });
     }
 
     Ok(())
