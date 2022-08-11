@@ -53,7 +53,7 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
     {
         // Start consumption task for WireGuard
         let wg = wg.clone();
-        tokio::spawn(async move { wg.consume_task().await });
+        tokio::spawn(Box::pin(async move { wg.consume_task().await }));
     }
 
     {
