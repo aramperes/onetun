@@ -185,7 +185,7 @@ impl TcpPortPool {
         }
     }
 
-    /// Requests a free port from the pool. An error is returned if none is available (exhaused max capacity).
+    /// Requests a free port from the pool. An error is returned if none is available (exhausted max capacity).
     pub async fn next(&self) -> anyhow::Result<VirtualPort> {
         let mut inner = self.inner.write().await;
         let port = inner

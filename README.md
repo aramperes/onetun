@@ -24,7 +24,7 @@ For example,
 onetun is available to install from [crates.io](https://crates.io/crates/onetun) with Rust ≥1.56.1:
 
 ```shell
-$ cargo install onetun
+cargo install onetun
 ```
 
 You can also download the binary for Windows, macOS (Intel), and Linux (amd64) from
@@ -40,9 +40,9 @@ $ docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
 You can also build onetun locally, using Rust ≥1.56.1:
 
 ```shell
-$ git clone https://github.com/aramperes/onetun && cd onetun
-$ cargo build --release
-$ ./target/release/onetun
+git clone https://github.com/aramperes/onetun && cd onetun
+cargo build --release
+./target/release/onetun
 ```
 
 ## Usage
@@ -54,7 +54,7 @@ access, or install any WireGuard tool on your local system for it to work.
 The only prerequisite is to register a peer IP and public key on the remote WireGuard endpoint; those are necessary for
 the WireGuard endpoint to trust the onetun peer and for packets to be routed.
 
-```
+```shell
 onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]    \
     --endpoint-addr <public WireGuard endpoint address>                   \
     --endpoint-public-key <the public key of the peer on the endpoint>    \
@@ -70,7 +70,7 @@ onetun [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...] [...]    \
 
 Suppose your WireGuard endpoint has the following configuration, and is accessible from `140.30.3.182:51820`:
 
-```
+```shell
 # /etc/wireguard/wg0.conf
 
 [Interface]
@@ -103,13 +103,13 @@ onetun 127.0.0.1:8080:192.168.4.2:8080                                    \
 
 You'll then see this log:
 
-```
+```shell
 INFO  onetun > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
 Which means you can now access the port locally!
 
-```
+```shell
 $ curl 127.0.0.1:8080
 Hello world!
 ```
@@ -118,7 +118,7 @@ Hello world!
 
 **onetun** supports running multiple tunnels in parallel. For example:
 
-```
+```shell
 $ onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [140.30.3.182:51820] as peer 192.168.4.3)
@@ -131,7 +131,7 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [
 **onetun** supports UDP forwarding. You can add `:UDP` at the end of the port-forward configuration, or `UDP,TCP` to support
 both protocols on the same port (note that this opens 2 separate tunnels, just on the same port)
 
-```
+```shell
 $ onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
 INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 
@@ -147,7 +147,7 @@ it in any production capacity.
 
 **onetun** supports both IPv4 and IPv6. In fact, you can use onetun to forward some IP version to another, e.g. 6-to-4:
 
-```
+```shell
 $ onetun [::1]:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -155,7 +155,7 @@ INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.
 Note that each tunnel can only support one "source" IP version and one "destination" IP version. If you want to support
 both IPv4 and IPv6 on the same port, you should create a second port-forward:
 
-```
+```shell
 $ onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
@@ -166,7 +166,7 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [
 For debugging purposes, you can enable the capture of IP packets sent between onetun and the WireGuard peer.
 The output is a libpcap capture file that can be viewed with Wireshark.
 
-```
+```shell
 $ onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::pcap > Capturing WireGuard IP packets to wg.pcap
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
@@ -174,8 +174,8 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [
 
 To capture packets sent to and from the onetun local port, you must use an external tool like `tcpdump` with root access:
 
-```
-$ sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8080'
+```shell
+sudo tcpdump -i lo -w local.pcap 'dst 127.0.0.1 && port 8080'
 ```
 
 ### WireGuard Options
@@ -184,8 +184,8 @@ By default, onetun will create the UDP socket to communicate with the WireGuard 
 i.e. `0.0.0.0:0` for IPv4 endpoints, or `[::]:0` for IPv6.
 You can bind to a static address instead using `--endpoint-bind-addr`:
 
-```
-$ onetun --endpoint-bind-addr 0.0.0.0:51820 --endpoint-addr 140.30.3.182:51820 [...]
+```shell
+onetun --endpoint-bind-addr 0.0.0.0:51820 --endpoint-addr 140.30.3.182:51820 [...]
 ```
 
 ## Architecture
