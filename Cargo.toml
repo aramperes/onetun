@@ -1,6 +1,6 @@
 [package]
 name = "onetun"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 license = "MIT"
 description = "A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations."
