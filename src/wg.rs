@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use crate::Bus;
 use anyhow::Context;
+use async_recursion::async_recursion;
+use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use log::Level;
 use smoltcp::wire::{IpProtocol, IpVersion, Ipv4Packet, Ipv6Packet};
@@ -102,37 +104,51 @@ impl WireGuardTunnel {
 
         loop {
             let mut send_buf = [0u8; MAX_PACKET];
-            match self.peer.update_timers(&mut send_buf) {
-                TunnResult::WriteToNetwork(packet) => {
-                    debug!(
-                        "Sending routine packet of {} bytes to WireGuard endpoint",
-                        packet.len()
-                    );
-                    match self.udp.send_to(packet, self.endpoint).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            error!(
-                                "Failed to send routine packet to WireGuard endpoint: {:?}",
-                                e
-                            );
-                        }
-                    };
-                }
-                TunnResult::Err(e) => {
-                    error!(
-                        "Failed to prepare routine packet for WireGuard endpoint: {:?}",
-                        e
-                    );
-                }
-                TunnResult::Done => {
-                    // Sleep for a bit
-                    tokio::time::sleep(Duration::from_millis(1)).await;
-                }
-                other => {
-                    warn!("Unexpected WireGuard routine task state: {:?}", other);
-                }
-            }
+            let tun_result = self.peer.update_timers(&mut send_buf);
+            self.handle_routine_tun_result(tun_result).await;
         }
+    }
+
+    #[async_recursion]
+    async fn handle_routine_tun_result<'a: 'async_recursion>(&self, result: TunnResult<'a>) -> () {
+        match result {
+            TunnResult::WriteToNetwork(packet) => {
+                debug!(
+                    "Sending routine packet of {} bytes to WireGuard endpoint",
+                    packet.len()
+                );
+                match self.udp.send_to(packet, self.endpoint).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!(
+                            "Failed to send routine packet to WireGuard endpoint: {:?}",
+                            e
+                        );
+                    }
+                };
+            }
+            TunnResult::Err(WireGuardError::ConnectionExpired) => {
+                warn!("Wireguard handshake has expired!");
+
+                let mut buf = vec![0u8; MAX_PACKET];
+                let result = self.peer.format_handshake_initiation(&mut buf[..], false);
+
+                self.handle_routine_tun_result(result).await
+            }
+            TunnResult::Err(e) => {
+                error!(
+                    "Failed to prepare routine packet for WireGuard endpoint: {:?}",
+                    e
+                );
+            }
+            TunnResult::Done => {
+                // Sleep for a bit
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+            other => {
+                warn!("Unexpected WireGuard routine task state: {:?}", other);
+            }
+        };
     }
 
     /// WireGuard consumption task. Receives encrypted packets from the WireGuard endpoint,
