@@ -329,7 +329,7 @@ fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
     use std::fs::File;
     use std::os::unix::fs::MetadataExt;
 
-    let mode = File::open(&path).ok()?.metadata().ok()?.mode();
+    let mode = File::open(path).ok()?.metadata().ok()?.mode();
     Some((mode & 0o40 > 0, mode & 0o4 > 0))
 }
 
