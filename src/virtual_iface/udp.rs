@@ -1,18 +1,19 @@
-use anyhow::Context;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
+use std::time::Duration;
 
-use crate::events::Event;
-use crate::{Bus, PortProtocol};
+use anyhow::Context;
 use async_trait::async_trait;
+use bytes::Bytes;
 use smoltcp::iface::{InterfaceBuilder, SocketHandle};
 use smoltcp::socket::{UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
 use smoltcp::wire::{IpAddress, IpCidr};
-use std::time::Duration;
 
 use crate::config::PortForwardConfig;
+use crate::events::Event;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
+use crate::{Bus, PortProtocol};
 
 const MAX_PACKET: usize = 65536;
 
@@ -114,7 +115,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
-        let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Vec<u8>)>> =
+        let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Bytes)>> =
             HashMap::new();
 
         loop {
@@ -158,7 +159,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                             match client_socket.recv() {
                                 Ok((data, _peer)) => {
                                     if !data.is_empty() {
-                                        endpoint.send(Event::RemoteData(*virtual_port, data.to_vec()));
+                                        endpoint.send(Event::RemoteData(*virtual_port, data.to_vec().into()));
                                     }
                                 }
                                 Err(e) => {

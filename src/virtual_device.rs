@@ -1,10 +1,13 @@
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+
+use bytes::{BufMut, Bytes, BytesMut};
+use smoltcp::phy::{Device, DeviceCapabilities, Medium};
+use smoltcp::time::Instant;
+
 use crate::config::PortProtocol;
 use crate::events::{BusSender, Event};
 use crate::Bus;
-use smoltcp::phy::{Device, DeviceCapabilities, Medium};
-use smoltcp::time::Instant;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 
 /// A virtual device that processes IP packets through smoltcp and WireGuard.
 pub struct VirtualIpDevice {
@@ -13,7 +16,7 @@ pub struct VirtualIpDevice {
     /// Channel receiver for received IP packets.
     bus_sender: BusSender,
     /// Local queue for packets received from the bus that need to go through the smoltcp interface.
-    process_queue: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    process_queue: Arc<Mutex<VecDeque<Bytes>>>,
 }
 
 impl VirtualIpDevice {
@@ -63,7 +66,13 @@ impl<'a> Device<'a> for VirtualIpDevice {
         };
         match next {
             Some(buffer) => Some((
-                Self::RxToken { buffer },
+                Self::RxToken {
+                    buffer: {
+                        let mut buf = BytesMut::new();
+                        buf.put(buffer);
+                        buf
+                    },
+                },
                 Self::TxToken {
                     sender: self.bus_sender.clone(),
                 },
@@ -88,7 +97,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
 
 #[doc(hidden)]
 pub struct RxToken {
-    buffer: Vec<u8>,
+    buffer: BytesMut,
 }
 
 impl smoltcp::phy::RxToken for RxToken {
@@ -113,7 +122,8 @@ impl smoltcp::phy::TxToken for TxToken {
         let mut buffer = Vec::new();
         buffer.resize(len, 0);
         let result = f(&mut buffer);
-        self.sender.send(Event::OutboundInternetPacket(buffer));
+        self.sender
+            .send(Event::OutboundInternetPacket(buffer.into()));
         result
     }
 }
