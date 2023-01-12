@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::fmt::{Display, Formatter};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -16,13 +17,13 @@ pub enum Event {
     /// A connection was dropped from the pool and should be closed in all interfaces.
     ClientConnectionDropped(VirtualPort),
     /// Data received by the local server that should be sent to the virtual server.
-    LocalData(PortForwardConfig, VirtualPort, Vec<u8>),
+    LocalData(PortForwardConfig, VirtualPort, Bytes),
     /// Data received by the remote server that should be sent to the local client.
-    RemoteData(VirtualPort, Vec<u8>),
+    RemoteData(VirtualPort, Bytes),
     /// IP packet received from the WireGuard tunnel that should be passed through the corresponding virtual device.
-    InboundInternetPacket(PortProtocol, Vec<u8>),
+    InboundInternetPacket(PortProtocol, Bytes),
     /// IP packet to be sent through the WireGuard tunnel as crafted by the virtual device.
-    OutboundInternetPacket(Vec<u8>),
+    OutboundInternetPacket(Bytes),
     /// Notifies that a virtual device read an IP packet.
     VirtualDeviceFed(PortProtocol),
 }

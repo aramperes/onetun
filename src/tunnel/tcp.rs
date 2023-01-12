@@ -1,17 +1,18 @@
-use crate::config::{PortForwardConfig, PortProtocol};
-use crate::virtual_iface::VirtualPort;
-use anyhow::Context;
 use std::collections::VecDeque;
-use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
-
 use std::ops::Range;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::events::{Bus, Event};
+use anyhow::Context;
+use bytes::BytesMut;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
+
+use crate::config::{PortForwardConfig, PortProtocol};
+use crate::events::{Bus, Event};
+use crate::virtual_iface::VirtualPort;
 
 const MAX_PACKET: usize = 65536;
 const MIN_PORT: u16 = 1000;
@@ -81,7 +82,7 @@ async fn handle_tcp_proxy_connection(
     let mut endpoint = bus.new_endpoint();
     endpoint.send(Event::ClientConnectionInitiated(port_forward, virtual_port));
 
-    let mut buffer = Vec::with_capacity(MAX_PACKET);
+    let mut buffer = BytesMut::with_capacity(MAX_PACKET);
     loop {
         tokio::select! {
             readable_result = socket.readable() => {
@@ -90,7 +91,7 @@ async fn handle_tcp_proxy_connection(
                         match socket.try_read_buf(&mut buffer) {
                             Ok(size) if size > 0 => {
                                 let data = Vec::from(&buffer[..size]);
-                                endpoint.send(Event::LocalData(port_forward, virtual_port, data));
+                                endpoint.send(Event::LocalData(port_forward, virtual_port, data.into()));
                                 // Reset buffer
                                 buffer.clear();
                             }

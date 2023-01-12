@@ -1,16 +1,19 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::net::IpAddr;
+use std::time::Duration;
+
+use anyhow::Context;
+use async_trait::async_trait;
+use bytes::Bytes;
+use smoltcp::iface::{InterfaceBuilder, SocketHandle};
+use smoltcp::socket::{TcpSocket, TcpSocketBuffer, TcpState};
+use smoltcp::wire::{IpAddress, IpCidr};
+
 use crate::config::{PortForwardConfig, PortProtocol};
 use crate::events::Event;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::Bus;
-use anyhow::Context;
-use async_trait::async_trait;
-use smoltcp::iface::{InterfaceBuilder, SocketHandle};
-use smoltcp::socket::{TcpSocket, TcpSocketBuffer, TcpState};
-use smoltcp::wire::{IpAddress, IpCidr};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
-use std::time::Duration;
 
 const MAX_PACKET: usize = 65536;
 
@@ -102,7 +105,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
         let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
-        let mut send_queue: HashMap<VirtualPort, VecDeque<Vec<u8>>> = HashMap::new();
+        let mut send_queue: HashMap<VirtualPort, VecDeque<Bytes>> = HashMap::new();
 
         loop {
             tokio::select! {
@@ -147,7 +150,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                             if sent < total {
                                                 // Sometimes only a subset is sent, so the rest needs to be sent on the next poll
                                                 let tx_extra = Vec::from(&to_transfer_slice[sent..total]);
-                                                send_queue.push_front(tx_extra);
+                                                send_queue.push_front(tx_extra.into());
                                             }
                                         }
                                         Err(e) => {
@@ -162,7 +165,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                             }
                         }
                         if client_socket.can_recv() {
-                            match client_socket.recv(|buffer| (buffer.len(), buffer.to_vec())) {
+                            match client_socket.recv(|buffer| (buffer.len(), Bytes::from(buffer.to_vec()))) {
                                 Ok(data) => {
                                     debug!("[{}] Received {} bytes from virtual server", virtual_port, data.len());
                                     if !data.is_empty() {

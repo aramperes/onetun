@@ -209,7 +209,7 @@ impl WireGuardTunnel {
                     trace_ip_packet("Received IP packet", packet);
 
                     if let Some(proto) = self.route_protocol(packet) {
-                        endpoint.send(Event::InboundInternetPacket(proto, packet.into()));
+                        endpoint.send(Event::InboundInternetPacket(proto, packet.to_vec().into()));
                     }
                 }
                 _ => {}

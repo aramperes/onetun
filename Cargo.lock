@@ -437,6 +437,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "boringtun",
+ "bytes",
  "clap",
  "futures",
  "log",

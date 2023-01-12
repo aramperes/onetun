@@ -4,14 +4,15 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::events::{Bus, Event};
 use anyhow::Context;
+use bytes::Bytes;
 use priority_queue::double_priority_queue::DoublePriorityQueue;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::net::UdpSocket;
 
 use crate::config::{PortForwardConfig, PortProtocol};
+use crate::events::{Bus, Event};
 use crate::virtual_iface::VirtualPort;
 
 const MAX_PACKET: usize = 65536;
@@ -98,7 +99,7 @@ async fn next_udp_datagram(
     socket: &UdpSocket,
     buffer: &mut [u8],
     port_pool: UdpPortPool,
-) -> anyhow::Result<Option<(VirtualPort, Vec<u8>)>> {
+) -> anyhow::Result<Option<(VirtualPort, Bytes)>> {
     let (size, peer_addr) = socket
         .recv_from(buffer)
         .await
@@ -126,7 +127,7 @@ async fn next_udp_datagram(
     port_pool.update_last_transmit(port).await;
 
     let data = buffer[..size].to_vec();
-    Ok(Some((port, data)))
+    Ok(Some((port, data.into())))
 }
 
 /// A pool of virtual ports available for TCP connections.
