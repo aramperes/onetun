@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr};
 use std::ops::Range;
@@ -128,6 +129,40 @@ async fn next_udp_datagram(
 
     let data = buffer[..size].to_vec();
     Ok(Some((port, data.into())))
+}
+
+pub async fn udp_remote_dispatcher(
+    port_forward: PortForwardConfig,
+    port_pool: UdpPortPool,
+    bus: Bus,
+) -> anyhow::Result<()> {
+    let mut endpoint = bus.new_endpoint();
+    let mut socket_map: HashMap<SocketAddr, UdpSocket> = HashMap::default();
+    loop {
+        match endpoint.recv().await {
+            Event::RemoteClientData(remote, pf, data) if pf == port_forward => {
+                // TODO: IPv6 supprt
+                let socket = match socket_map.entry(remote) {
+                    Entry::Occupied(o) => o.into_mut(),
+                    Entry::Vacant(v) => {
+                        let udp = UdpSocket::bind((
+                            if pf.destination.is_ipv4() {
+                                "0.0.0.0"
+                            } else {
+                                "::"
+                            },
+                            port_pool.next(remote).await.unwrap().num(),
+                        ))
+                        .await
+                        .with_context(|| "Failed to create UDP socket for local client");
+                        v.insert(udp.unwrap())
+                    }
+                };
+                socket.send_to(&data, remote).await.unwrap();
+            }
+            _ => continue,
+        }
+    }
 }
 
 /// A pool of virtual ports available for TCP connections.

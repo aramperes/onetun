@@ -28,7 +28,19 @@ pub async fn port_forward(
     );
 
     match port_forward.protocol {
-        PortProtocol::Tcp => tcp::tcp_proxy_server(port_forward, tcp_port_pool, bus).await,
-        PortProtocol::Udp => udp::udp_proxy_server(port_forward, udp_port_pool, bus).await,
+        PortProtocol::Tcp => {
+            if port_forward.remote {
+                tcp::tcp_remote_dispatcher(port_forward, bus).await
+            } else {
+                tcp::tcp_proxy_server(port_forward, tcp_port_pool, bus).await
+            }
+        }
+        PortProtocol::Udp => {
+            if port_forward.remote {
+                udp::udp_remote_dispatcher(port_forward, udp_port_pool, bus).await
+            } else {
+                udp::udp_proxy_server(port_forward, udp_port_pool, bus).await
+            }
+        }
     }
 }

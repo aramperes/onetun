@@ -160,6 +160,23 @@ async fn handle_tcp_proxy_connection(
     Ok(())
 }
 
+/// Listens for incoming remote connections and creates new tasks to handle them.
+pub async fn tcp_remote_dispatcher(
+    port_forward: PortForwardConfig,
+    bus: Bus,
+) -> anyhow::Result<()> {
+    let mut endpoint = bus.new_endpoint();
+
+    loop {
+        match endpoint.recv().await {
+            Event::RemoteConnectionRequest(pf) if pf == port_forward => {
+                info!("New remote connection: {}", pf);
+            }
+            _ => continue,
+        }
+    }
+}
+
 /// A pool of virtual ports available for TCP connections.
 #[derive(Clone)]
 pub struct TcpPortPool {

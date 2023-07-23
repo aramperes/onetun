@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -20,12 +21,16 @@ pub enum Event {
     LocalData(PortForwardConfig, VirtualPort, Bytes),
     /// Data received by the remote server that should be sent to the local client.
     RemoteData(VirtualPort, Bytes),
+    /// Data received from a remote client to send to a local server.
+    RemoteClientData(SocketAddr, PortForwardConfig, Bytes),
     /// IP packet received from the WireGuard tunnel that should be passed through the corresponding virtual device.
     InboundInternetPacket(PortProtocol, Bytes),
     /// IP packet to be sent through the WireGuard tunnel as crafted by the virtual device.
     OutboundInternetPacket(Bytes),
     /// Notifies that a virtual device read an IP packet.
     VirtualDeviceFed(PortProtocol),
+    /// A new remote connection is trying to open to local.
+    RemoteConnectionRequest(PortForwardConfig),
 }
 
 impl Display for Event {
@@ -48,6 +53,14 @@ impl Display for Event {
                 let size = data.len();
                 write!(f, "RemoteData{{ vp={} size={} }}", vp, size)
             }
+            Event::RemoteClientData(remote, pf, data) => {
+                let size = data.len();
+                write!(
+                    f,
+                    "RemoteClientData{{ remote={}, pf={} size={} }}",
+                    remote, pf, size
+                )
+            }
             Event::InboundInternetPacket(proto, data) => {
                 let size = data.len();
                 write!(
@@ -62,6 +75,9 @@ impl Display for Event {
             }
             Event::VirtualDeviceFed(proto) => {
                 write!(f, "VirtualDeviceFed{{ proto={} }}", proto)
+            }
+            Event::RemoteConnectionRequest(pf) => {
+                write!(f, "RemoteConnectionRequest{{ pf={} }}", pf)
             }
         }
     }
