@@ -221,7 +221,7 @@ impl WireGuardTunnel {
         Tunn::new(
             config.private_key.clone(),
             config.endpoint_public_key.clone(),
-            config.endpoint_preshared_key,
+            config.preshared_key,
             config.keepalive_seconds,
             0,
             None,
