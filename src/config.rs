@@ -6,6 +6,7 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use anyhow::Context;
+use base64::prelude::{Engine as _, BASE64_STANDARD};
 pub use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
@@ -17,6 +18,7 @@ pub struct Config {
     pub remote_port_forwards: Vec<PortForwardConfig>,
     pub private_key: Arc<X25519SecretKey>,
     pub endpoint_public_key: Arc<X25519PublicKey>,
+    pub endpoint_preshared_key: Option<[u8; 32]>,
     pub endpoint_addr: SocketAddr,
     pub endpoint_bind_addr: SocketAddr,
     pub source_peer_ip: IpAddr,
@@ -73,6 +75,12 @@ impl Config {
                     .long("endpoint-public-key")
                     .env("ONETUN_ENDPOINT_PUBLIC_KEY")
                     .help("The public key of the WireGuard endpoint (remote)."),
+                Arg::with_name("endpoint-preshared-key")
+                    .required(false)
+                    .takes_value(true)
+                    .long("endpoint-preshared-key")
+                    .env("ONETUN_ENDPOINT_PRESHARED_KEY")
+                    .help("The pre-shared key of the WireGuard endpoint (remote)."),
                 Arg::with_name("endpoint-addr")
                     .required(true)
                     .takes_value(true)
@@ -264,6 +272,9 @@ impl Config {
                 parse_public_key(matches.value_of("endpoint-public-key"))
                     .with_context(|| "Invalid endpoint public key")?,
             ),
+            endpoint_preshared_key: parse_preshared_key(
+                matches.value_of("endpoint-preshared-key"),
+            )?,
             endpoint_addr,
             endpoint_bind_addr,
             source_peer_ip,
@@ -302,6 +313,19 @@ fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
         .parse::<X25519PublicKey>()
         .map_err(|e| anyhow::anyhow!("{}", e))
         .with_context(|| "Invalid public key")
+}
+
+fn parse_preshared_key(s: Option<&str>) -> anyhow::Result<Option<[u8; 32]>> {
+    if let Some(s) = s {
+        let psk = BASE64_STANDARD
+            .decode(s)
+            .with_context(|| "Invalid pre-shared key")?;
+        Ok(Some(psk.try_into().map_err(|_| {
+            anyhow::anyhow!("Unsupported pre-shared key")
+        })?))
+    } else {
+        Ok(None)
+    }
 }
 
 fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
