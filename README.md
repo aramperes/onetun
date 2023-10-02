@@ -261,4 +261,4 @@ All in all, I would not recommend using UDP forwarding for public services, sinc
 
 ## License
 
-MIT License. See `LICENSE` for details. Copyright &copy; 2021-2022 Aram Peres.
+MIT License. See `LICENSE` for details. Copyright &copy; 2023 Aram Peres.
