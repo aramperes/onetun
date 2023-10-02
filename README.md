@@ -188,6 +188,13 @@ You can bind to a static address instead using `--endpoint-bind-addr`:
 onetun --endpoint-bind-addr 0.0.0.0:51820 --endpoint-addr 140.30.3.182:51820 [...]
 ```
 
+The security of the WireGuard connection can be further enhanced with a **pre-shared key** (PSK). You can generate such a key with the `wg genpsk` command, and provide it using `--preshared-key`.
+The peer must also have this key configured using the `PresharedKey` option.
+
+```shell
+onetun --preshared-key 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' [...]
+```
+
 ## Architecture
 
 **In short:** onetun uses [smoltcp's](https://github.com/smoltcp-rs/smoltcp) TCP/IP and UDP stack to generate IP packets
