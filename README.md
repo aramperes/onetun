@@ -33,7 +33,7 @@ the [Releases](https://github.com/aramperes/onetun/releases) page.
 You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
 
 ```shell
-$ docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
+docker run --rm --name onetun --user 1000 -p 8080:8080 aramperes/onetun \
     0.0.0.0:8080:192.168.4.2:8080 [...options...]
 ```
 
@@ -110,7 +110,7 @@ INFO  onetun > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3
 Which means you can now access the port locally!
 
 ```shell
-$ curl 127.0.0.1:8080
+curl 127.0.0.1:8080
 Hello world!
 ```
 
@@ -119,7 +119,7 @@ Hello world!
 **onetun** supports running multiple tunnels in parallel. For example:
 
 ```shell
-$ onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
+onetun 127.0.0.1:8080:192.168.4.2:8080 127.0.0.1:8081:192.168.4.4:8081
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -132,10 +132,10 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [
 both protocols on the same port (note that this opens 2 separate tunnels, just on the same port)
 
 ```shell
-$ onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
+onetun 127.0.0.1:8080:192.168.4.2:8080:UDP
 INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 
-$ onetun 127.0.0.1:8080:192.168.4.2:8080:UDP,TCP
+onetun 127.0.0.1:8080:192.168.4.2:8080:UDP,TCP
 INFO  onetun::tunnel > Tunneling UDP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -148,7 +148,7 @@ it in any production capacity.
 **onetun** supports both IPv4 and IPv6. In fact, you can use onetun to forward some IP version to another, e.g. 6-to-4:
 
 ```shell
-$ onetun [::1]:8080:192.168.4.2:8080
+onetun [::1]:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
 
@@ -156,7 +156,7 @@ Note that each tunnel can only support one "source" IP version and one "destinat
 both IPv4 and IPv6 on the same port, you should create a second port-forward:
 
 ```shell
-$ onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
+onetun [::1]:8080:192.168.4.2:8080 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::tunnel > Tunneling TCP [[::1]:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
@@ -167,7 +167,7 @@ For debugging purposes, you can enable the capture of IP packets sent between on
 The output is a libpcap capture file that can be viewed with Wireshark.
 
 ```shell
-$ onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
+onetun --pcap wg.pcap 127.0.0.1:8080:192.168.4.2:8080
 INFO  onetun::pcap > Capturing WireGuard IP packets to wg.pcap
 INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8080]->[192.168.4.2:8080] (via [140.30.3.182:51820] as peer 192.168.4.3)
 ```
