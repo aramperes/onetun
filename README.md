@@ -259,6 +259,13 @@ if the least recently used port hasn't been used for a certain amount of time. I
 
 All in all, I would not recommend using UDP forwarding for public services, since it's most likely prone to simple DoS or DDoS.
 
+## Contributing and Maintenance
+
+I will gladly accept contributions to onetun, and set aside time to review all pull-requests.
+Please consider opening a GitHub issue if you are unsure if your contribution is within the scope of the project.
+
+**Disclaimer**: I do not have enough personal time to actively maintain onetun besides open-source contributions.
+
 ## License
 
 MIT License. See `LICENSE` for details. Copyright &copy; 2023 Aram Peres.
