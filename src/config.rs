@@ -6,7 +6,6 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use anyhow::Context;
-use base64::prelude::{Engine as _, BASE64_STANDARD};
 pub use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
@@ -317,9 +316,7 @@ fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
 
 fn parse_preshared_key(s: Option<&str>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
-        let psk = BASE64_STANDARD
-            .decode(s)
-            .with_context(|| "Invalid pre-shared key")?;
+        let psk = base64::decode(s).with_context(|| "Invalid pre-shared key")?;
         Ok(Some(psk.try_into().map_err(|_| {
             anyhow::anyhow!("Unsupported pre-shared key")
         })?))
