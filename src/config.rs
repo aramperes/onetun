@@ -314,7 +314,10 @@ fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
 
 fn parse_preshared_key(s: Option<&str>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
-        let psk = base64::decode(s).with_context(|| "Invalid pre-shared key")?;
+        use base64::{engine::general_purpose, Engine as _};
+        let psk = general_purpose::STANDARD
+            .decode(s)
+            .with_context(|| "Invalid pre-shared key")?;
         Ok(Some(psk.try_into().map_err(|_| {
             anyhow::anyhow!("Unsupported pre-shared key")
         })?))
