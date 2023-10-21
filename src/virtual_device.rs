@@ -1,13 +1,15 @@
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
-
-use bytes::{BufMut, Bytes, BytesMut};
-use smoltcp::phy::{Device, DeviceCapabilities, Medium};
-use smoltcp::time::Instant;
-
 use crate::config::PortProtocol;
 use crate::events::{BusSender, Event};
 use crate::Bus;
+use bytes::{BufMut, Bytes, BytesMut};
+use smoltcp::{
+    phy::{DeviceCapabilities, Medium},
+    time::Instant,
+};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 /// A virtual device that processes IP packets through smoltcp and WireGuard.
 pub struct VirtualIpDevice {
@@ -52,11 +54,11 @@ impl VirtualIpDevice {
     }
 }
 
-impl<'a> Device<'a> for VirtualIpDevice {
-    type RxToken = RxToken;
-    type TxToken = TxToken;
+impl smoltcp::phy::Device for VirtualIpDevice {
+    type RxToken<'a> = RxToken where Self: 'a;
+    type TxToken<'a> = TxToken where Self: 'a;
 
-    fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
+    fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let next = {
             let mut queue = self
                 .process_queue
@@ -81,7 +83,7 @@ impl<'a> Device<'a> for VirtualIpDevice {
         }
     }
 
-    fn transmit(&'a mut self) -> Option<Self::TxToken> {
+    fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
         Some(TxToken {
             sender: self.bus_sender.clone(),
         })
@@ -101,9 +103,9 @@ pub struct RxToken {
 }
 
 impl smoltcp::phy::RxToken for RxToken {
-    fn consume<R, F>(mut self, _timestamp: Instant, f: F) -> smoltcp::Result<R>
+    fn consume<R, F>(mut self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
+        F: FnOnce(&mut [u8]) -> R,
     {
         f(&mut self.buffer)
     }
@@ -115,9 +117,9 @@ pub struct TxToken {
 }
 
 impl smoltcp::phy::TxToken for TxToken {
-    fn consume<R, F>(self, _timestamp: Instant, len: usize, f: F) -> smoltcp::Result<R>
+    fn consume<R, F>(self, len: usize, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
+        F: FnOnce(&mut [u8]) -> R,
     {
         let mut buffer = vec![0; len];
         let result = f(&mut buffer);
