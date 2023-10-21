@@ -1,29 +1,33 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::IpAddr;
-use std::time::Duration;
-
-use anyhow::Context;
-use async_trait::async_trait;
-use bytes::Bytes;
-use smoltcp::iface::{InterfaceBuilder, SocketHandle};
-use smoltcp::socket::{UdpPacketMetadata, UdpSocket, UdpSocketBuffer};
-use smoltcp::wire::{IpAddress, IpCidr};
-
 use crate::config::PortForwardConfig;
 use crate::events::Event;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
 use crate::{Bus, PortProtocol};
+use anyhow::Context;
+use async_trait::async_trait;
+use bytes::Bytes;
+use smoltcp::{
+    iface::{Config, Interface, SocketHandle, SocketSet},
+    socket::udp::{self, UdpMetadata},
+    time::Instant,
+    wire::{HardwareAddress, IpAddress, IpCidr},
+};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    net::IpAddr,
+    time::Duration,
+};
 
 const MAX_PACKET: usize = 65536;
 
-pub struct UdpVirtualInterface {
+pub struct UdpVirtualInterface<'a> {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
+    sockets: SocketSet<'a>,
 }
 
-impl UdpVirtualInterface {
+impl<'a> UdpVirtualInterface<'a> {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
     pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
@@ -34,21 +38,24 @@ impl UdpVirtualInterface {
                 .collect(),
             source_peer_ip,
             bus,
+            sockets: SocketSet::new([]),
         }
     }
 
-    fn new_server_socket(port_forward: PortForwardConfig) -> anyhow::Result<UdpSocket<'static>> {
-        static mut UDP_SERVER_RX_META: [UdpPacketMetadata; 0] = [];
+    fn new_server_socket(port_forward: PortForwardConfig) -> anyhow::Result<udp::Socket<'static>> {
+        static mut UDP_SERVER_RX_META: [udp::PacketMetadata; 0] = [];
         static mut UDP_SERVER_RX_DATA: [u8; 0] = [];
-        static mut UDP_SERVER_TX_META: [UdpPacketMetadata; 0] = [];
+        static mut UDP_SERVER_TX_META: [udp::PacketMetadata; 0] = [];
         static mut UDP_SERVER_TX_DATA: [u8; 0] = [];
-        let udp_rx_buffer = UdpSocketBuffer::new(unsafe { &mut UDP_SERVER_RX_META[..] }, unsafe {
-            &mut UDP_SERVER_RX_DATA[..]
-        });
-        let udp_tx_buffer = UdpSocketBuffer::new(unsafe { &mut UDP_SERVER_TX_META[..] }, unsafe {
-            &mut UDP_SERVER_TX_DATA[..]
-        });
-        let mut socket = UdpSocket::new(udp_rx_buffer, udp_tx_buffer);
+        let udp_rx_buffer =
+            udp::PacketBuffer::new(unsafe { &mut UDP_SERVER_RX_META[..] }, unsafe {
+                &mut UDP_SERVER_RX_DATA[..]
+            });
+        let udp_tx_buffer =
+            udp::PacketBuffer::new(unsafe { &mut UDP_SERVER_TX_META[..] }, unsafe {
+                &mut UDP_SERVER_TX_DATA[..]
+            });
+        let mut socket = udp::Socket::new(udp_rx_buffer, udp_tx_buffer);
         socket
             .bind((
                 IpAddress::from(port_forward.destination.ip()),
@@ -61,14 +68,14 @@ impl UdpVirtualInterface {
     fn new_client_socket(
         source_peer_ip: IpAddr,
         client_port: VirtualPort,
-    ) -> anyhow::Result<UdpSocket<'static>> {
-        let rx_meta = vec![UdpPacketMetadata::EMPTY; 10];
-        let tx_meta = vec![UdpPacketMetadata::EMPTY; 10];
+    ) -> anyhow::Result<udp::Socket<'static>> {
+        let rx_meta = vec![udp::PacketMetadata::EMPTY; 10];
+        let tx_meta = vec![udp::PacketMetadata::EMPTY; 10];
         let rx_data = vec![0u8; MAX_PACKET];
         let tx_data = vec![0u8; MAX_PACKET];
-        let udp_rx_buffer = UdpSocketBuffer::new(rx_meta, rx_data);
-        let udp_tx_buffer = UdpSocketBuffer::new(tx_meta, tx_data);
-        let mut socket = UdpSocket::new(udp_rx_buffer, udp_tx_buffer);
+        let udp_rx_buffer = udp::PacketBuffer::new(rx_meta, rx_data);
+        let udp_tx_buffer = udp::PacketBuffer::new(tx_meta, tx_data);
+        let mut socket = udp::Socket::new(udp_rx_buffer, udp_tx_buffer);
         socket
             .bind((IpAddress::from(source_peer_ip), client_port.num()))
             .with_context(|| "UDP virtual client failed to bind")?;
@@ -89,20 +96,31 @@ impl UdpVirtualInterface {
 }
 
 #[async_trait]
-impl VirtualInterfacePoll for UdpVirtualInterface {
-    async fn poll_loop(self, device: VirtualIpDevice) -> anyhow::Result<()> {
+impl<'a> VirtualInterfacePoll for UdpVirtualInterface<'a> {
+    async fn poll_loop(mut self, mut device: VirtualIpDevice) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
         let addresses = self.addresses();
+        let config = Config::new(HardwareAddress::Ip);
 
         // Create virtual interface (contains smoltcp state machine)
-        let mut iface = InterfaceBuilder::new(device, vec![])
-            .ip_addrs(addresses)
-            .finalize();
+        let mut iface = Interface::new(config, &mut device, Instant::now());
+        iface.update_ip_addrs(|ip_addrs| {
+            addresses.iter().for_each(|addr| {
+                ip_addrs.push(*addr).unwrap();
+            });
+        });
+        iface.set_any_ip(true);
+
+        // Maps virtual port to its client socket handle
+        let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Create virtual server for each port forward
         for port_forward in self.port_forwards.iter() {
             let server_socket = UdpVirtualInterface::new_server_socket(*port_forward)?;
-            iface.add_socket(server_socket);
+            let handle = self.sockets.add(server_socket);
+            let virtual_port =
+                VirtualPort::new(port_forward.destination.port(), port_forward.protocol);
+            port_client_handle_map.insert(virtual_port, handle);
         }
 
         // The next time to poll the interface. Can be None for instant poll.
@@ -110,9 +128,6 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
 
         // Bus endpoint to read events
         let mut endpoint = self.bus.new_endpoint();
-
-        // Maps virtual port to its client socket handle
-        let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
         let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Bytes)>> =
@@ -127,16 +142,12 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                 } => {
                     let loop_start = smoltcp::time::Instant::now();
 
-                    match iface.poll(loop_start) {
-                        Ok(processed) if processed => {
-                            trace!("UDP virtual interface polled some packets to be processed");
-                        }
-                        Err(e) => error!("UDP virtual interface poll error: {:?}", e),
-                        _ => {}
+                    if iface.poll(loop_start, &mut device, &mut self.sockets) {
+                        log::trace!("UDP virtual interface polled some packets to be processed");
                     }
 
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
-                        let client_socket = iface.get_socket::<UdpSocket>(*client_handle);
+                        let client_socket = self.sockets.get_mut::<udp::Socket>(*client_handle);
                         if client_socket.can_send() {
                             if let Some(send_queue) = send_queue.get_mut(virtual_port) {
                                 let to_transfer = send_queue.pop_front();
@@ -144,7 +155,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                                     client_socket
                                         .send_slice(
                                             &data,
-                                            (IpAddress::from(port_forward.destination.ip()), port_forward.destination.port()).into(),
+                                            UdpMetadata::from(port_forward.destination),
                                         )
                                         .unwrap_or_else(|e| {
                                             error!(
@@ -172,7 +183,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                     }
 
                     // The virtual interface determines the next time to poll (this is to reduce unnecessary polls)
-                    next_poll = match iface.poll_delay(loop_start) {
+                    next_poll = match iface.poll_delay(loop_start, &self.sockets) {
                         Some(smoltcp::time::Duration::ZERO) => None,
                         Some(delay) => {
                             trace!("UDP Virtual interface delayed next poll by {}", delay);
@@ -190,7 +201,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                             } else {
                                 // Client socket does not exist
                                 let client_socket = UdpVirtualInterface::new_client_socket(self.source_peer_ip, virtual_port)?;
-                                let client_handle = iface.add_socket(client_socket);
+                                let client_handle = self.sockets.add(client_socket);
 
                                 // Add handle to map
                                 port_client_handle_map.insert(virtual_port, client_handle);
@@ -198,7 +209,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                             }
                             next_poll = None;
                         }
-                        Event::VirtualDeviceFed(protocol) if protocol == PortProtocol::Udp => {
+                        Event::VirtualDeviceFed(PortProtocol::Udp) => {
                             next_poll = None;
                         }
                         _ => {}
