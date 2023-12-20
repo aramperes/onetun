@@ -1,4 +1,4 @@
-FROM rust:1.63.0 as cargo-build
+FROM rust:1.65.0 as cargo-build
 
 WORKDIR /usr/src/onetun
 COPY Cargo.toml Cargo.toml
