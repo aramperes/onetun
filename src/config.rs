@@ -31,18 +31,17 @@ pub struct Config {
 impl Config {
     #[cfg(feature = "bin")]
     pub fn from_args() -> anyhow::Result<Self> {
-        use clap::{App, Arg};
+        use clap::{Arg, Command};
 
         let mut warnings = vec![];
 
-        let matches = App::new("onetun")
+        let matches = Command::new("onetun")
             .author("Aram Peres <aram.peres@gmail.com>")
             .version(env!("CARGO_PKG_VERSION"))
             .args(&[
-                Arg::with_name("PORT_FORWARD")
+                Arg::new("PORT_FORWARD")
                     .required(false)
-                    .multiple(true)
-                    .takes_value(true)
+                    .num_args(1..)
                     .help("Port forward configurations. The format of each argument is [src_host:]<src_port>:<dst_host>:<dst_port>[:TCP,UDP,...], \
                     where [src_host] is the local IP to listen on, <src_port> is the local port to listen on, <dst_host> is the remote peer IP to forward to, and <dst_port> is the remote port to forward to. \
                     Environment variables of the form 'ONETUN_PORT_FORWARD_[#]' are also accepted, where [#] starts at 1.\n\
@@ -56,80 +55,79 @@ impl Config {
                     \tlocalhost:8080:192.168.4.1:8081:TCP\n\
                     \tlocalhost:8080:peer.intranet:8081:TCP\
                     "),
-                Arg::with_name("private-key")
-                    .required_unless("private-key-file")
-                    .takes_value(true)
+                Arg::new("private-key")
+                    .conflicts_with("private-key-file")
+                    .num_args(1)
                     .long("private-key")
                     .env("ONETUN_PRIVATE_KEY")
                     .help("The private key of this peer. The corresponding public key should be registered in the WireGuard endpoint. \
                     You can also use '--private-key-file' to specify a file containing the key instead."),
-                Arg::with_name("private-key-file")
-                    .takes_value(true)
+                Arg::new("private-key-file")
+                    .num_args(1)
                     .long("private-key-file")
                     .env("ONETUN_PRIVATE_KEY_FILE")
                     .help("The path to a file containing the private key of this peer. The corresponding public key should be registered in the WireGuard endpoint."),
-                Arg::with_name("endpoint-public-key")
+                Arg::new("endpoint-public-key")
                     .required(true)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("endpoint-public-key")
                     .env("ONETUN_ENDPOINT_PUBLIC_KEY")
                     .help("The public key of the WireGuard endpoint (remote)."),
-                Arg::with_name("preshared-key")
+                Arg::new("preshared-key")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("preshared-key")
                     .env("ONETUN_PRESHARED_KEY")
                     .help("The pre-shared key (PSK) as configured with the peer."),
-                Arg::with_name("endpoint-addr")
+                Arg::new("endpoint-addr")
                     .required(true)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("endpoint-addr")
                     .env("ONETUN_ENDPOINT_ADDR")
                     .help("The address (IP + port) of the WireGuard endpoint (remote). Example: 1.2.3.4:51820"),
-                Arg::with_name("endpoint-bind-addr")
+                Arg::new("endpoint-bind-addr")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("endpoint-bind-addr")
                     .env("ONETUN_ENDPOINT_BIND_ADDR")
                     .help("The address (IP + port) used to bind the local UDP socket for the WireGuard tunnel. Example: 1.2.3.4:30000. Defaults to 0.0.0.0:0 for IPv4 endpoints, or [::]:0 for IPv6 endpoints."),
-                Arg::with_name("source-peer-ip")
+                Arg::new("source-peer-ip")
                     .required(true)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("source-peer-ip")
                     .env("ONETUN_SOURCE_PEER_IP")
                     .help("The source IP to identify this peer as (local). Example: 192.168.4.3"),
-                Arg::with_name("keep-alive")
+                Arg::new("keep-alive")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("keep-alive")
                     .env("ONETUN_KEEP_ALIVE")
                     .help("Configures a persistent keep-alive for the WireGuard tunnel, in seconds."),
-                Arg::with_name("max-transmission-unit")
+                Arg::new("max-transmission-unit")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("max-transmission-unit")
                     .env("ONETUN_MTU")
                     .default_value("1420")
                     .help("Configures the max-transmission-unit (MTU) of the WireGuard tunnel."),
-                Arg::with_name("log")
+                Arg::new("log")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("log")
                     .env("ONETUN_LOG")
                     .default_value("info")
                     .help("Configures the log level and format."),
-                Arg::with_name("pcap")
+                Arg::new("pcap")
                     .required(false)
-                    .takes_value(true)
+                    .num_args(1)
                     .long("pcap")
                     .env("ONETUN_PCAP")
                     .help("Decrypts and captures IP packets on the WireGuard tunnel to a given output file."),
-                Arg::with_name("remote")
+                Arg::new("remote")
                     .required(false)
-                    .takes_value(true)
-                    .multiple(true)
+                    .num_args(1..)
                     .long("remote")
-                    .short("r")
+                    .short('r')
                     .help("Remote port forward configurations. The format of each argument is <src_port>:<dst_host>:<dst_port>[:TCP,UDP,...], \
                     where <src_port> is the port the other peers will reach the server with, <dst_host> is the IP to forward to, and <dst_port> is the port to forward to. \
                     The <src_port> will be bound on onetun's peer IP, as specified by --source-peer-ip. If you pass a different value for <src_host> here, it will be rejected.\n\
@@ -144,7 +142,7 @@ impl Config {
 
         // Combine `PORT_FORWARD` arg and `ONETUN_PORT_FORWARD_#` envs
         let mut port_forward_strings = HashSet::new();
-        if let Some(values) = matches.values_of("PORT_FORWARD") {
+        if let Some(values) = matches.get_many::<String>("PORT_FORWARD") {
             for value in values {
                 port_forward_strings.insert(value.to_owned());
             }
@@ -169,12 +167,12 @@ impl Config {
             .collect();
 
         // Read source-peer-ip
-        let source_peer_ip = parse_ip(matches.value_of("source-peer-ip"))
+        let source_peer_ip = parse_ip(matches.get_one::<String>("source-peer-ip"))
             .with_context(|| "Invalid source peer IP")?;
 
         // Combined `remote` arg and `ONETUN_REMOTE_PORT_FORWARD_#` envs
         let mut port_forward_strings = HashSet::new();
-        if let Some(values) = matches.values_of("remote") {
+        if let Some(values) = matches.get_many::<String>("remote") {
             for value in values {
                 port_forward_strings.insert(value.to_owned());
             }
@@ -193,7 +191,7 @@ impl Config {
                 .map(|s| {
                     PortForwardConfig::from_notation(
                         &s,
-                        matches.value_of("source-peer-ip").unwrap(),
+                        matches.get_one::<String>("source-peer-ip").unwrap(),
                     )
                 })
                 .collect();
@@ -216,7 +214,7 @@ impl Config {
 
         // Read private key from file or CLI argument
         let (group_readable, world_readable) = matches
-            .value_of("private-key-file")
+            .get_one::<String>("private-key-file")
             .and_then(is_file_insecurely_readable)
             .unwrap_or_default();
         if group_readable {
@@ -226,7 +224,9 @@ impl Config {
             warnings.push("Private key file is world-readable. This is insecure.".into());
         }
 
-        let private_key = if let Some(private_key_file) = matches.value_of("private-key-file") {
+        let private_key = if let Some(private_key_file) =
+            matches.get_one::<String>("private-key-file")
+        {
             read_to_string(private_key_file)
                 .map(|s| s.trim().to_string())
                 .with_context(|| "Failed to read private key file")
@@ -236,15 +236,16 @@ impl Config {
                 Use \"--private-key-file <file containing private key>\", or the \"ONETUN_PRIVATE_KEY\" env variable instead.".into());
             }
             matches
-                .value_of("private-key")
-                .map(String::from)
+                .get_one::<String>("private-key")
+                .cloned()
                 .with_context(|| "Missing private key")
         }?;
 
-        let endpoint_addr = parse_addr(matches.value_of("endpoint-addr"))
+        let endpoint_addr = parse_addr(matches.get_one::<String>("endpoint-addr"))
             .with_context(|| "Invalid endpoint address")?;
 
-        let endpoint_bind_addr = if let Some(addr) = matches.value_of("endpoint-bind-addr") {
+        let endpoint_bind_addr = if let Some(addr) = matches.get_one::<String>("endpoint-bind-addr")
+        {
             let addr = parse_addr(Some(addr)).with_context(|| "Invalid bind address")?;
             // Make sure the bind address and endpoint address are the same IP version
             if addr.ip().is_ipv4() != endpoint_addr.ip().is_ipv4() {
@@ -268,33 +269,37 @@ impl Config {
                 parse_private_key(&private_key).with_context(|| "Invalid private key")?,
             ),
             endpoint_public_key: Arc::new(
-                parse_public_key(matches.value_of("endpoint-public-key"))
+                parse_public_key(matches.get_one::<String>("endpoint-public-key"))
                     .with_context(|| "Invalid endpoint public key")?,
             ),
-            preshared_key: parse_preshared_key(matches.value_of("preshared-key"))?,
+            preshared_key: parse_preshared_key(matches.get_one::<String>("preshared-key"))?,
             endpoint_addr,
             endpoint_bind_addr,
             source_peer_ip,
-            keepalive_seconds: parse_keep_alive(matches.value_of("keep-alive"))
+            keepalive_seconds: parse_keep_alive(matches.get_one::<String>("keep-alive"))
                 .with_context(|| "Invalid keep-alive value")?,
-            max_transmission_unit: parse_mtu(matches.value_of("max-transmission-unit"))
+            max_transmission_unit: parse_mtu(matches.get_one::<String>("max-transmission-unit"))
                 .with_context(|| "Invalid max-transmission-unit value")?,
-            log: matches.value_of("log").unwrap_or_default().into(),
-            pcap_file: matches.value_of("pcap").map(String::from),
+            log: matches
+                .get_one::<String>("log")
+                .cloned()
+                .unwrap_or_default(),
+            pcap_file: matches.get_one::<String>("pcap").cloned(),
             warnings,
         })
     }
 }
 
-fn parse_addr(s: Option<&str>) -> anyhow::Result<SocketAddr> {
+fn parse_addr<T: AsRef<str>>(s: Option<T>) -> anyhow::Result<SocketAddr> {
     s.with_context(|| "Missing address")?
+        .as_ref()
         .to_socket_addrs()
         .with_context(|| "Invalid address")?
         .next()
         .with_context(|| "Could not lookup address")
 }
 
-fn parse_ip(s: Option<&str>) -> anyhow::Result<IpAddr> {
+fn parse_ip(s: Option<&String>) -> anyhow::Result<IpAddr> {
     s.with_context(|| "Missing IP")?
         .parse::<IpAddr>()
         .with_context(|| "Invalid IP address")
@@ -305,14 +310,14 @@ fn parse_private_key(s: &str) -> anyhow::Result<X25519SecretKey> {
         .map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn parse_public_key(s: Option<&str>) -> anyhow::Result<X25519PublicKey> {
+fn parse_public_key(s: Option<&String>) -> anyhow::Result<X25519PublicKey> {
     s.with_context(|| "Missing public key")?
         .parse::<X25519PublicKey>()
         .map_err(|e| anyhow::anyhow!("{}", e))
         .with_context(|| "Invalid public key")
 }
 
-fn parse_preshared_key(s: Option<&str>) -> anyhow::Result<Option<[u8; 32]>> {
+fn parse_preshared_key(s: Option<&String>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
         let psk = base64::decode(s).with_context(|| "Invalid pre-shared key")?;
         Ok(Some(psk.try_into().map_err(|_| {
@@ -323,7 +328,7 @@ fn parse_preshared_key(s: Option<&str>) -> anyhow::Result<Option<[u8; 32]>> {
     }
 }
 
-fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
+fn parse_keep_alive(s: Option<&String>) -> anyhow::Result<Option<u16>> {
     if let Some(s) = s {
         let parsed: u16 = s.parse().with_context(|| {
             format!(
@@ -337,14 +342,14 @@ fn parse_keep_alive(s: Option<&str>) -> anyhow::Result<Option<u16>> {
     }
 }
 
-fn parse_mtu(s: Option<&str>) -> anyhow::Result<usize> {
+fn parse_mtu(s: Option<&String>) -> anyhow::Result<usize> {
     s.with_context(|| "Missing MTU")?
         .parse()
         .with_context(|| "Invalid MTU")
 }
 
 #[cfg(unix)]
-fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
+fn is_file_insecurely_readable(path: &String) -> Option<(bool, bool)> {
     use std::fs::File;
     use std::os::unix::fs::MetadataExt;
 
@@ -353,7 +358,7 @@ fn is_file_insecurely_readable(path: &str) -> Option<(bool, bool)> {
 }
 
 #[cfg(not(unix))]
-fn is_file_insecurely_readable(_path: &str) -> Option<(bool, bool)> {
+fn is_file_insecurely_readable(_path: &String) -> Option<(bool, bool)> {
     // No good way to determine permissions on non-Unix target
     None
 }
