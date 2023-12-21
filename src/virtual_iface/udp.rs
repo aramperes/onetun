@@ -198,7 +198,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                             }
                             next_poll = None;
                         }
-                        Event::VirtualDeviceFed(protocol) if protocol == PortProtocol::Udp => {
+                        Event::VirtualDeviceFed(PortProtocol::Udp) => {
                             next_poll = None;
                         }
                         _ => {}

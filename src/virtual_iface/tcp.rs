@@ -229,7 +229,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 next_poll = None;
                             }
                         }
-                        Event::VirtualDeviceFed(protocol) if protocol == PortProtocol::Tcp => {
+                        Event::VirtualDeviceFed(PortProtocol::Tcp) => {
                             next_poll = None;
                         }
                         _ => {}

@@ -119,8 +119,7 @@ impl smoltcp::phy::TxToken for TxToken {
     where
         F: FnOnce(&mut [u8]) -> smoltcp::Result<R>,
     {
-        let mut buffer = Vec::new();
-        buffer.resize(len, 0);
+        let mut buffer = vec![0; len];
         let result = f(&mut buffer);
         self.sender
             .send(Event::OutboundInternetPacket(buffer.into()));
