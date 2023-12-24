@@ -10,7 +10,7 @@ use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     socket::udp::{self, UdpMetadata},
     time::Instant,
-    wire::{HardwareAddress, IpAddress, IpCidr},
+    wire::{HardwareAddress, IpAddress, IpCidr, IpVersion},
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -90,7 +90,7 @@ impl<'a> UdpVirtualInterface<'a> {
         }
         addresses
             .into_iter()
-            .map(|addr| IpCidr::new(addr, 32))
+            .map(|addr| IpCidr::new(addr, addr_length(&addr)))
             .collect()
     }
 }
@@ -217,5 +217,12 @@ impl<'a> VirtualInterfacePoll for UdpVirtualInterface<'a> {
                 }
             }
         }
+    }
+}
+
+const fn addr_length(addr: &IpAddress) -> u8 {
+    match addr.version() {
+        IpVersion::Ipv4 => 32,
+        IpVersion::Ipv6 => 128,
     }
 }

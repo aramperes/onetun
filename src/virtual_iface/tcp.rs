@@ -10,7 +10,7 @@ use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     socket::tcp,
     time::Instant,
-    wire::{HardwareAddress, IpAddress, IpCidr},
+    wire::{HardwareAddress, IpAddress, IpCidr, IpVersion},
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -78,7 +78,7 @@ impl<'a> TcpVirtualInterface<'a> {
         }
         addresses
             .into_iter()
-            .map(|addr| IpCidr::new(addr, 32))
+            .map(|addr| IpCidr::new(addr, addr_length(&addr)))
             .collect()
     }
 }
@@ -247,5 +247,12 @@ impl VirtualInterfacePoll for TcpVirtualInterface<'_> {
                 }
             }
         }
+    }
+}
+
+const fn addr_length(addr: &IpAddress) -> u8 {
+    match addr.version() {
+        IpVersion::Ipv4 => 32,
+        IpVersion::Ipv6 => 128,
     }
 }
