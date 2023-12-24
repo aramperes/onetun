@@ -202,14 +202,14 @@ impl Config {
             .collect();
         for port_forward in remote_port_forwards.iter_mut() {
             if port_forward.source.ip() != source_peer_ip {
-                return Err(anyhow::anyhow!("Remote port forward config <src_host> must match --source-peer-ip ({}), or be omitted.", source_peer_ip));
+                bail!("Remote port forward config <src_host> must match --source-peer-ip ({}), or be omitted.", source_peer_ip);
             }
             port_forward.source = SocketAddr::from((source_peer_ip, port_forward.source.port()));
             port_forward.remote = true;
         }
 
         if port_forwards.is_empty() && remote_port_forwards.is_empty() {
-            return Err(anyhow::anyhow!("No port forward configurations given."));
+            bail!("No port forward configurations given.");
         }
 
         // Read private key from file or CLI argument
