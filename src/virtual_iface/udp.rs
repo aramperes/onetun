@@ -20,14 +20,14 @@ use std::{
 
 const MAX_PACKET: usize = 65536;
 
-pub struct UdpVirtualInterface<'a> {
+pub struct UdpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
-    sockets: SocketSet<'a>,
+    sockets: SocketSet<'static>,
 }
 
-impl<'a> UdpVirtualInterface<'a> {
+impl UdpVirtualInterface {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
     pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
@@ -96,7 +96,7 @@ impl<'a> UdpVirtualInterface<'a> {
 }
 
 #[async_trait]
-impl<'a> VirtualInterfacePoll for UdpVirtualInterface<'a> {
+impl VirtualInterfacePoll for UdpVirtualInterface {
     async fn poll_loop(mut self, mut device: VirtualIpDevice) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
         let addresses = self.addresses();
