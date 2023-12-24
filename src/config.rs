@@ -161,14 +161,14 @@ impl Config {
             .map(|s| PortForwardConfig::from_notation(&s, DEFAULT_PORT_FORWARD_SOURCE))
             .collect();
         let port_forwards: Vec<PortForwardConfig> = port_forwards
-            .with_context(|| "Failed to parse port forward config")?
+            .context("Failed to parse port forward config")?
             .into_iter()
             .flatten()
             .collect();
 
         // Read source-peer-ip
         let source_peer_ip = parse_ip(matches.get_one::<String>("source-peer-ip"))
-            .with_context(|| "Invalid source peer IP")?;
+            .context("Invalid source peer IP")?;
 
         // Combined `remote` arg and `ONETUN_REMOTE_PORT_FORWARD_#` envs
         let mut port_forward_strings = HashSet::new();
@@ -196,7 +196,7 @@ impl Config {
                 })
                 .collect();
         let mut remote_port_forwards: Vec<PortForwardConfig> = remote_port_forwards
-            .with_context(|| "Failed to parse remote port forward config")?
+            .context("Failed to parse remote port forward config")?
             .into_iter()
             .flatten()
             .collect();
@@ -229,7 +229,7 @@ impl Config {
         {
             read_to_string(private_key_file)
                 .map(|s| s.trim().to_string())
-                .with_context(|| "Failed to read private key file")
+                .context("Failed to read private key file")
         } else {
             if std::env::var("ONETUN_PRIVATE_KEY").is_err() {
                 warnings.push("Private key was passed using CLI. This is insecure. \
@@ -238,20 +238,18 @@ impl Config {
             matches
                 .get_one::<String>("private-key")
                 .cloned()
-                .with_context(|| "Missing private key")
+                .context("Missing private key")
         }?;
 
         let endpoint_addr = parse_addr(matches.get_one::<String>("endpoint-addr"))
-            .with_context(|| "Invalid endpoint address")?;
+            .context("Invalid endpoint address")?;
 
         let endpoint_bind_addr = if let Some(addr) = matches.get_one::<String>("endpoint-bind-addr")
         {
-            let addr = parse_addr(Some(addr)).with_context(|| "Invalid bind address")?;
+            let addr = parse_addr(Some(addr)).context("Invalid bind address")?;
             // Make sure the bind address and endpoint address are the same IP version
             if addr.ip().is_ipv4() != endpoint_addr.ip().is_ipv4() {
-                return Err(anyhow::anyhow!(
-                    "Endpoint and bind addresses must be the same IP version"
-                ));
+                bail!("Endpoint and bind addresses must be the same IP version");
             }
             addr
         } else {
@@ -265,21 +263,19 @@ impl Config {
         Ok(Self {
             port_forwards,
             remote_port_forwards,
-            private_key: Arc::new(
-                parse_private_key(&private_key).with_context(|| "Invalid private key")?,
-            ),
+            private_key: Arc::new(parse_private_key(&private_key).context("Invalid private key")?),
             endpoint_public_key: Arc::new(
                 parse_public_key(matches.get_one::<String>("endpoint-public-key"))
-                    .with_context(|| "Invalid endpoint public key")?,
+                    .context("Invalid endpoint public key")?,
             ),
             preshared_key: parse_preshared_key(matches.get_one::<String>("preshared-key"))?,
             endpoint_addr,
             endpoint_bind_addr,
             source_peer_ip,
             keepalive_seconds: parse_keep_alive(matches.get_one::<String>("keep-alive"))
-                .with_context(|| "Invalid keep-alive value")?,
+                .context("Invalid keep-alive value")?,
             max_transmission_unit: parse_mtu(matches.get_one::<String>("max-transmission-unit"))
-                .with_context(|| "Invalid max-transmission-unit value")?,
+                .context("Invalid max-transmission-unit value")?,
             log: matches
                 .get_one::<String>("log")
                 .cloned()
@@ -291,22 +287,22 @@ impl Config {
 }
 
 fn parse_addr<T: AsRef<str>>(s: Option<T>) -> anyhow::Result<SocketAddr> {
-    s.with_context(|| "Missing address")?
+    s.context("Missing address")?
         .as_ref()
         .to_socket_addrs()
-        .with_context(|| "Invalid address")?
+        .context("Invalid address")?
         .next()
-        .with_context(|| "Could not lookup address")
+        .context("Could not lookup address")
 }
 
 fn parse_ip(s: Option<&String>) -> anyhow::Result<IpAddr> {
-    s.with_context(|| "Missing IP")?
+    s.context("Missing IP address")?
         .parse::<IpAddr>()
-        .with_context(|| "Invalid IP address")
+        .context("Invalid IP address")
 }
 
 fn parse_private_key(s: &str) -> anyhow::Result<StaticSecret> {
-    let decoded = base64::decode(s).with_context(|| "Failed to decode private key")?;
+    let decoded = base64::decode(s).context("Failed to decode private key")?;
     if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
         Ok(StaticSecret::from(bytes))
     } else {
@@ -315,8 +311,8 @@ fn parse_private_key(s: &str) -> anyhow::Result<StaticSecret> {
 }
 
 fn parse_public_key(s: Option<&String>) -> anyhow::Result<PublicKey> {
-    let encoded = s.with_context(|| "Missing public key")?;
-    let decoded = base64::decode(encoded).with_context(|| "Failed to decode public key")?;
+    let encoded = s.context("Missing public key")?;
+    let decoded = base64::decode(encoded).context("Failed to decode public key")?;
     if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
         Ok(PublicKey::from(bytes))
     } else {
@@ -326,7 +322,7 @@ fn parse_public_key(s: Option<&String>) -> anyhow::Result<PublicKey> {
 
 fn parse_preshared_key(s: Option<&String>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
-        let decoded = base64::decode(s).with_context(|| "Failed to decode preshared key")?;
+        let decoded = base64::decode(s).context("Failed to decode preshared key")?;
         if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
             Ok(Some(bytes))
         } else {
@@ -352,9 +348,7 @@ fn parse_keep_alive(s: Option<&String>) -> anyhow::Result<Option<u16>> {
 }
 
 fn parse_mtu(s: Option<&String>) -> anyhow::Result<usize> {
-    s.with_context(|| "Missing MTU")?
-        .parse()
-        .with_context(|| "Invalid MTU")
+    s.context("Missing MTU")?.parse().context("Invalid MTU")
 }
 
 #[cfg(unix)]
@@ -483,27 +477,21 @@ impl PortForwardConfig {
 
         let source = (
             src_addr.0.unwrap_or(default_source),
-            src_addr
-                .1
-                .parse::<u16>()
-                .with_context(|| "Invalid source port")?,
+            src_addr.1.parse::<u16>().context("Invalid source port")?,
         )
             .to_socket_addrs()
-            .with_context(|| "Invalid source address")?
+            .context("Invalid source address")?
             .next()
-            .with_context(|| "Could not resolve source address")?;
+            .context("Could not resolve source address")?;
 
         let destination = (
             dst_addr.0,
-            dst_addr
-                .1
-                .parse::<u16>()
-                .with_context(|| "Invalid source port")?,
+            dst_addr.1.parse::<u16>().context("Invalid source port")?,
         )
             .to_socket_addrs() // TODO: Pass this as given and use DNS config instead (issue #15)
-            .with_context(|| "Invalid destination address")?
+            .context("Invalid destination address")?
             .next()
-            .with_context(|| "Could not resolve destination address")?;
+            .context("Could not resolve destination address")?;
 
         // Parse protocols
         let protocols = if let Some(protocols) = protocols {
@@ -513,7 +501,7 @@ impl PortForwardConfig {
         } else {
             Ok(vec![PortProtocol::Tcp])
         }
-        .with_context(|| "Failed to parse protocols")?;
+        .context("Failed to parse protocols")?;
 
         // Returns an config for each protocol
         Ok(protocols

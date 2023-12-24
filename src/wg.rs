@@ -41,7 +41,7 @@ impl WireGuardTunnel {
         let endpoint = config.endpoint_addr;
         let udp = UdpSocket::bind(config.endpoint_bind_addr)
             .await
-            .with_context(|| "Failed to create UDP socket for WireGuard connection")?;
+            .context("Failed to create UDP socket for WireGuard connection")?;
 
         Ok(Self {
             source_peer_ip,
@@ -65,7 +65,7 @@ impl WireGuardTunnel {
                 self.udp
                     .send_to(packet, self.endpoint)
                     .await
-                    .with_context(|| "Failed to send encrypted IP packet to WireGuard endpoint.")?;
+                    .context("Failed to send encrypted IP packet to WireGuard endpoint.")?;
                 debug!(
                     "Sent {} bytes to WireGuard endpoint (encrypted IP packet)",
                     packet.len()
@@ -244,7 +244,7 @@ impl WireGuardTunnel {
             None,
         )
         .map_err(|s| anyhow::anyhow!("{}", s))
-        .with_context(|| "Failed to initialize boringtun Tunn")
+        .context("Failed to initialize boringtun Tunn")
     }
 
     /// Determine the inner protocol of the incoming IP packet (TCP/UDP).

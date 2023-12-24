@@ -56,7 +56,7 @@ impl TcpVirtualInterface {
                 IpAddress::from(port_forward.destination.ip()),
                 port_forward.destination.port(),
             ))
-            .with_context(|| "Virtual server socket failed to listen")?;
+            .context("Virtual server socket failed to listen")?;
 
         Ok(socket)
     }
@@ -218,7 +218,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                     ),
                                     (IpAddress::from(self.source_peer_ip), virtual_port.num()),
                                 )
-                                .with_context(|| "Virtual server socket failed to listen")?;
+                                .context("Virtual server socket failed to listen")?;
 
                             next_poll = None;
                         }

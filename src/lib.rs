@@ -41,7 +41,7 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
 
     let wg = WireGuardTunnel::new(&config, bus.clone())
         .await
-        .with_context(|| "Failed to initialize WireGuard tunnel")?;
+        .context("Failed to initialize WireGuard tunnel")?;
     let wg = Arc::new(wg);
 
     {

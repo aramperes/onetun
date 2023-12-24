@@ -27,14 +27,14 @@ pub async fn tcp_proxy_server(
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(port_forward.source)
         .await
-        .with_context(|| "Failed to listen on TCP proxy server")?;
+        .context("Failed to listen on TCP proxy server")?;
 
     loop {
         let port_pool = port_pool.clone();
         let (socket, peer_addr) = listener
             .accept()
             .await
-            .with_context(|| "Failed to accept connection on TCP proxy server")?;
+            .context("Failed to accept connection on TCP proxy server")?;
 
         // Assign a 'virtual port': this is a unique port number used to route IP packets
         // received from the WireGuard tunnel. It is the port number that the virtual client will
@@ -192,7 +192,7 @@ impl TcpPortPool {
         let port = inner
             .queue
             .pop_front()
-            .with_context(|| "TCP virtual port pool is exhausted")?;
+            .context("TCP virtual port pool is exhausted")?;
         Ok(VirtualPort::new(port, PortProtocol::Tcp))
     }
 

@@ -8,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     use anyhow::Context;
     use onetun::{config::Config, events::Bus};
 
-    let config = Config::from_args().with_context(|| "Failed to read config")?;
+    let config = Config::from_args().context("Configuration has errors")?;
     init_logger(&config)?;
 
     for warning in &config.warnings {
@@ -32,7 +32,5 @@ fn init_logger(config: &onetun::config::Config) -> anyhow::Result<()> {
 
     let mut builder = pretty_env_logger::formatted_timed_builder();
     builder.parse_filters(&config.log);
-    builder
-        .try_init()
-        .with_context(|| "Failed to initialize logger")
+    builder.try_init().context("Failed to initialize logger")
 }

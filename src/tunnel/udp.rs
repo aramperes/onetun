@@ -37,7 +37,7 @@ pub async fn udp_proxy_server(
     let mut endpoint = bus.new_endpoint();
     let socket = UdpSocket::bind(port_forward.source)
         .await
-        .with_context(|| "Failed to bind on UDP proxy address")?;
+        .context("Failed to bind on UDP proxy address")?;
 
     let mut buffer = [0u8; MAX_PACKET];
     loop {
@@ -103,7 +103,7 @@ async fn next_udp_datagram(
     let (size, peer_addr) = socket
         .recv_from(buffer)
         .await
-        .with_context(|| "Failed to accept incoming UDP datagram")?;
+        .context("Failed to accept incoming UDP datagram")?;
 
     // Assign a 'virtual port': this is a unique port number used to route IP packets
     // received from the WireGuard tunnel. It is the port number that the virtual client will
@@ -212,7 +212,7 @@ impl UdpPortPool {
                     None
                 }
             })
-            .with_context(|| "virtual port pool is exhausted")?;
+            .context("Virtual port pool is exhausted")?;
 
         inner.port_by_peer_addr.insert(peer_addr, port);
         inner.peer_addr_by_port.insert(port, peer_addr);

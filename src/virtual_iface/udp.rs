@@ -61,7 +61,7 @@ impl UdpVirtualInterface {
                 IpAddress::from(port_forward.destination.ip()),
                 port_forward.destination.port(),
             ))
-            .with_context(|| "UDP virtual server socket failed to bind")?;
+            .context("UDP virtual server socket failed to bind")?;
         Ok(socket)
     }
 
@@ -78,7 +78,7 @@ impl UdpVirtualInterface {
         let mut socket = udp::Socket::new(udp_rx_buffer, udp_tx_buffer);
         socket
             .bind((IpAddress::from(source_peer_ip), client_port.num()))
-            .with_context(|| "UDP virtual client failed to bind")?;
+            .context("UDP virtual client failed to bind")?;
         Ok(socket)
     }
 

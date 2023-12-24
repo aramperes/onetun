@@ -16,7 +16,7 @@ impl Pcap {
         self.writer
             .flush()
             .await
-            .with_context(|| "Failed to flush pcap writer")
+            .context("Failed to flush pcap writer")
     }
 
     async fn write(&mut self, data: &[u8]) -> anyhow::Result<usize> {
@@ -30,14 +30,14 @@ impl Pcap {
         self.writer
             .write_u16(value)
             .await
-            .with_context(|| "Failed to write u16 to pcap writer")
+            .context("Failed to write u16 to pcap writer")
     }
 
     async fn write_u32(&mut self, value: u32) -> anyhow::Result<()> {
         self.writer
             .write_u32(value)
             .await
-            .with_context(|| "Failed to write u32 to pcap writer")
+            .context("Failed to write u32 to pcap writer")
     }
 
     async fn global_header(&mut self) -> anyhow::Result<()> {
@@ -64,14 +64,14 @@ impl Pcap {
     async fn packet(&mut self, timestamp: Instant, packet: &[u8]) -> anyhow::Result<()> {
         self.packet_header(timestamp, packet.len())
             .await
-            .with_context(|| "Failed to write packet header to pcap writer")?;
+            .context("Failed to write packet header to pcap writer")?;
         self.write(packet)
             .await
-            .with_context(|| "Failed to write packet to pcap writer")?;
+            .context("Failed to write packet to pcap writer")?;
         self.writer
             .flush()
             .await
-            .with_context(|| "Failed to flush pcap writer")?;
+            .context("Failed to flush pcap writer")?;
         self.flush().await
     }
 }
@@ -81,14 +81,14 @@ pub async fn capture(pcap_file: String, bus: Bus) -> anyhow::Result<()> {
     let mut endpoint = bus.new_endpoint();
     let file = File::create(&pcap_file)
         .await
-        .with_context(|| "Failed to create pcap file")?;
+        .context("Failed to create pcap file")?;
     let writer = BufWriter::new(file);
 
     let mut writer = Pcap { writer };
     writer
         .global_header()
         .await
-        .with_context(|| "Failed to write global header to pcap writer")?;
+        .context("Failed to write global header to pcap writer")?;
 
     info!("Capturing WireGuard IP packets to {}", &pcap_file);
     loop {
@@ -98,14 +98,14 @@ pub async fn capture(pcap_file: String, bus: Bus) -> anyhow::Result<()> {
                 writer
                     .packet(instant, &ip)
                     .await
-                    .with_context(|| "Failed to write inbound IP packet to pcap writer")?;
+                    .context("Failed to write inbound IP packet to pcap writer")?;
             }
             Event::OutboundInternetPacket(ip) => {
                 let instant = Instant::now();
                 writer
                     .packet(instant, &ip)
                     .await
-                    .with_context(|| "Failed to write output IP packet to pcap writer")?;
+                    .context("Failed to write output IP packet to pcap writer")?;
             }
             _ => {}
         }
