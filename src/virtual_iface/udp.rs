@@ -105,22 +105,15 @@ impl<'a> VirtualInterfacePoll for UdpVirtualInterface<'a> {
         // Create virtual interface (contains smoltcp state machine)
         let mut iface = Interface::new(config, &mut device, Instant::now());
         iface.update_ip_addrs(|ip_addrs| {
-            addresses.iter().for_each(|addr| {
-                ip_addrs.push(*addr).unwrap();
+            addresses.into_iter().for_each(|addr| {
+                ip_addrs.push(addr).unwrap();
             });
         });
-        iface.set_any_ip(true);
-
-        // Maps virtual port to its client socket handle
-        let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Create virtual server for each port forward
         for port_forward in self.port_forwards.iter() {
             let server_socket = UdpVirtualInterface::new_server_socket(*port_forward)?;
-            let handle = self.sockets.add(server_socket);
-            let virtual_port =
-                VirtualPort::new(port_forward.destination.port(), port_forward.protocol);
-            port_client_handle_map.insert(virtual_port, handle);
+            self.sockets.add(server_socket);
         }
 
         // The next time to poll the interface. Can be None for instant poll.
@@ -128,6 +121,9 @@ impl<'a> VirtualInterfacePoll for UdpVirtualInterface<'a> {
 
         // Bus endpoint to read events
         let mut endpoint = self.bus.new_endpoint();
+
+        // Maps virtual port to its client socket handle
+        let mut port_client_handle_map: HashMap<VirtualPort, SocketHandle> = HashMap::new();
 
         // Data packets to send from a virtual client
         let mut send_queue: HashMap<VirtualPort, VecDeque<(PortForwardConfig, Bytes)>> =
