@@ -259,6 +259,49 @@ if the least recently used port hasn't been used for a certain amount of time. I
 
 All in all, I would not recommend using UDP forwarding for public services, since it's most likely prone to simple DoS or DDoS.
 
+## HTTP/SOCKS Proxy
+
+**onetun** is a Transport-layer proxy (also known as port forwarding); it is not in scope to provide
+a HTTP/SOCKS proxy server. However, you can easily chain **onetun** with a proxy server on a remote
+that is locked down to your WireGuard network.
+
+For example, you could run [dante-server](https://www.inet.no/dante/) on a peer (ex. `192.168.4.2`) with the following configuration:
+
+```
+# /etc/danted.conf
+
+logoutput: syslog
+user.privileged: root
+user.unprivileged: nobody
+
+internal: 192.168.4.2 port=1080
+external: eth0
+
+socksmethod: none
+clientmethod: none
+
+# Locks down proxy use to WireGuard peers (192.168.4.x)
+client pass {
+    from: 192.168.4.0/24 to: 0.0.0.0/0
+}
+socks pass {
+    from: 192.168.4.0/24 to: 0.0.0.0/0
+}
+```
+
+Then use **onetun** to expose the SOCKS5 proxy locally:
+
+```shell
+onetun 127.0.0.1:1080:192.168.4.2:1080
+INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:1080]->[192.168.4.2:1080] (via [140.30.3.182:51820] as peer 192.168.4.3)
+```
+
+Test with `curl` (or configure your browser):
+
+```shell
+curl -x socks5://127.0.0.1:1080 https://ifconfig.me
+```
+
 ## Contributing and Maintenance
 
 I will gladly accept contributions to onetun, and set aside time to review all pull-requests.
