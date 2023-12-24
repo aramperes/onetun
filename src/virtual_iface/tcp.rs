@@ -21,14 +21,14 @@ use std::{
 const MAX_PACKET: usize = 65536;
 
 /// A virtual interface for proxying Layer 7 data to Layer 3 packets, and vice-versa.
-pub struct TcpVirtualInterface<'a> {
+pub struct TcpVirtualInterface {
     source_peer_ip: IpAddr,
     port_forwards: Vec<PortForwardConfig>,
     bus: Bus,
-    sockets: SocketSet<'a>,
+    sockets: SocketSet<'static>,
 }
 
-impl<'a> TcpVirtualInterface<'a> {
+impl TcpVirtualInterface {
     /// Initialize the parameters for a new virtual interface.
     /// Use the `poll_loop()` future to start the virtual interface poll loop.
     pub fn new(port_forwards: Vec<PortForwardConfig>, bus: Bus, source_peer_ip: IpAddr) -> Self {
@@ -84,7 +84,7 @@ impl<'a> TcpVirtualInterface<'a> {
 }
 
 #[async_trait]
-impl VirtualInterfacePoll for TcpVirtualInterface<'_> {
+impl VirtualInterfacePoll for TcpVirtualInterface {
     async fn poll_loop(mut self, mut device: VirtualIpDevice) -> anyhow::Result<()> {
         // Create CIDR block for source peer IP + each port forward IP
         let addresses = self.addresses();
