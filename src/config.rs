@@ -5,18 +5,18 @@ use std::fs::read_to_string;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
-use anyhow::Context;
-pub use boringtun::crypto::{X25519PublicKey, X25519SecretKey};
+use anyhow::{bail, Context};
+pub use boringtun::x25519::{PublicKey, StaticSecret};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     pub port_forwards: Vec<PortForwardConfig>,
     #[allow(dead_code)]
     pub remote_port_forwards: Vec<PortForwardConfig>,
-    pub private_key: Arc<X25519SecretKey>,
-    pub endpoint_public_key: Arc<X25519PublicKey>,
+    pub private_key: Arc<StaticSecret>,
+    pub endpoint_public_key: Arc<PublicKey>,
     pub preshared_key: Option<[u8; 32]>,
     pub endpoint_addr: SocketAddr,
     pub endpoint_bind_addr: SocketAddr,
@@ -305,24 +305,33 @@ fn parse_ip(s: Option<&String>) -> anyhow::Result<IpAddr> {
         .with_context(|| "Invalid IP address")
 }
 
-fn parse_private_key(s: &str) -> anyhow::Result<X25519SecretKey> {
-    s.parse::<X25519SecretKey>()
-        .map_err(|e| anyhow::anyhow!("{}", e))
+fn parse_private_key(s: &str) -> anyhow::Result<StaticSecret> {
+    let decoded = base64::decode(s).with_context(|| "Failed to decode private key")?;
+    if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
+        Ok(StaticSecret::from(bytes))
+    } else {
+        bail!("Invalid private key")
+    }
 }
 
-fn parse_public_key(s: Option<&String>) -> anyhow::Result<X25519PublicKey> {
-    s.with_context(|| "Missing public key")?
-        .parse::<X25519PublicKey>()
-        .map_err(|e| anyhow::anyhow!("{}", e))
-        .with_context(|| "Invalid public key")
+fn parse_public_key(s: Option<&String>) -> anyhow::Result<PublicKey> {
+    let encoded = s.with_context(|| "Missing public key")?;
+    let decoded = base64::decode(encoded).with_context(|| "Failed to decode public key")?;
+    if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
+        Ok(PublicKey::from(bytes))
+    } else {
+        bail!("Invalid public key")
+    }
 }
 
 fn parse_preshared_key(s: Option<&String>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
-        let psk = base64::decode(s).with_context(|| "Invalid pre-shared key")?;
-        Ok(Some(psk.try_into().map_err(|_| {
-            anyhow::anyhow!("Unsupported pre-shared key")
-        })?))
+        let decoded = base64::decode(s).with_context(|| "Failed to decode preshared key")?;
+        if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
+            Ok(Some(bytes))
+        } else {
+            bail!("Invalid preshared key")
+        }
     } else {
         Ok(None)
     }
