@@ -15,8 +15,9 @@ COPY . .
 RUN cargo build --release
 
 FROM debian:11-slim
-RUN apt-get update
-RUN apt-get install dumb-init -y
+RUN apt-get update \
+    && apt-get install dumb-init -y \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=cargo-build /usr/src/onetun/target/release/onetun /usr/local/bin/onetun
 
