@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use crate::Bus;
@@ -253,7 +253,7 @@ impl WireGuardTunnel {
             Ok(IpVersion::Ipv4) => Ipv4Packet::new_checked(&packet)
                 .ok()
                 // Only care if the packet is destined for this tunnel
-                .filter(|packet| Ipv4Addr::from(packet.dst_addr()) == self.source_peer_ip)
+                .filter(|packet| packet.dst_addr() == self.source_peer_ip)
                 .and_then(|packet| match packet.next_header() {
                     IpProtocol::Tcp => Some(PortProtocol::Tcp),
                     IpProtocol::Udp => Some(PortProtocol::Udp),
@@ -263,7 +263,7 @@ impl WireGuardTunnel {
             Ok(IpVersion::Ipv6) => Ipv6Packet::new_checked(&packet)
                 .ok()
                 // Only care if the packet is destined for this tunnel
-                .filter(|packet| Ipv6Addr::from(packet.dst_addr()) == self.source_peer_ip)
+                .filter(|packet| packet.dst_addr() == self.source_peer_ip)
                 .and_then(|packet| match packet.next_header() {
                     IpProtocol::Tcp => Some(PortProtocol::Tcp),
                     IpProtocol::Udp => Some(PortProtocol::Udp),
