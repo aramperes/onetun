@@ -126,6 +126,14 @@ INFO  onetun::tunnel > Tunneling TCP [127.0.0.1:8081]->[192.168.4.4:8081] (via [
 
 ... would open TCP ports 8080 and 8081 locally, which forward to their respective ports on the different peers.
 
+#### Maximum number of tunnels
+
+`smoltcp` imposes a compile-time limit on the number of IP addresses assigned to an interface. **onetun** increases
+the default value to support most use-cases. In effect, the default limit on the number of **onetun** peers
+is **7 per protocol** (TCP and UDP).
+
+Should you need more unique IP addresses to forward ports to, you can increase the limit in `.cargo/config.toml` and recompile **onetun**.
+
 ### UDP Support
 
 **onetun** supports UDP forwarding. You can add `:UDP` at the end of the port-forward configuration, or `UDP,TCP` to support
