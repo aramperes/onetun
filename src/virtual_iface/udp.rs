@@ -6,6 +6,7 @@ use crate::{Bus, PortProtocol};
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
+use smoltcp::iface::PollResult;
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     socket::udp::{self, UdpMetadata},
@@ -140,7 +141,7 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
                 } => {
                     let loop_start = smoltcp::time::Instant::now();
 
-                    if iface.poll(loop_start, &mut device, &mut self.sockets) {
+                    if iface.poll(loop_start, &mut device, &mut self.sockets) == PollResult::SocketStateChanged {
                         log::trace!("UDP virtual interface polled some packets to be processed");
                     }
 

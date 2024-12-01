@@ -6,6 +6,7 @@ use crate::Bus;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
+use smoltcp::iface::PollResult;
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
     socket::tcp,
@@ -141,7 +142,7 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         }
                     });
 
-                    if iface.poll(loop_start, &mut device, &mut self.sockets) {
+                    if iface.poll(loop_start, &mut device, &mut self.sockets) == PollResult::SocketStateChanged {
                         log::trace!("TCP virtual interface polled some packets to be processed");
                     }
 
