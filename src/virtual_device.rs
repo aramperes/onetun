@@ -55,8 +55,14 @@ impl VirtualIpDevice {
 }
 
 impl smoltcp::phy::Device for VirtualIpDevice {
-    type RxToken<'a> = RxToken where Self: 'a;
-    type TxToken<'a> = TxToken where Self: 'a;
+    type RxToken<'a>
+        = RxToken
+    where
+        Self: 'a;
+    type TxToken<'a>
+        = TxToken
+    where
+        Self: 'a;
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let next = {
