@@ -81,18 +81,26 @@ jobs:
             os: ubuntu-latest
             rust: stable
             target: x86_64-unknown-linux-musl
+            cross: true
+            output: target/x86_64-unknown-linux-musl/release/onetun
           - build: linux-aarch64
             os: ubuntu-latest
             rust: stable
             target: aarch64-unknown-linux-musl
+            cross: true
+            output: target/aarch64-unknown-linux-musl/release/onetun
           - build: macos-aarch64
             os: macos-latest
             rust: stable
             target: aarch64-apple-darwin
+            cross: false
+            output: target/release/onetun
           - build: windows
             os: windows-2019
             rust: stable
             target: x86_64-pc-windows-msvc
+            cross: false
+            output: target/release/onetun.exe
 
     steps:
       - name: Checkout repository
@@ -129,21 +137,25 @@ jobs:
           echo "RELEASE_UPLOAD_URL=$release_upload_url" >> $GITHUB_ENV
           echo "release upload url: $release_upload_url"
 
-      - name: Install cross
-        run: cargo install cross
-
       - name: Build onetun binary
-        run: cross build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cargo install cross
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
 
       - name: Prepare onetun binary
         shell: bash
         run: |
           mkdir -p ci/assets
           if [ "${{ matrix.build }}" = "windows" ]; then
-            cp "target/release/onetun.exe" "ci/assets/onetun.exe"
+            cp "${{ matrix.output }}" "ci/assets/onetun.exe"
             echo "ASSET=onetun.exe" >> $GITHUB_ENV
           else
-            cp "target/release/onetun" "ci/assets/onetun-${{ matrix.build }}"
+            cp "${{ matrix.output }}" "ci/assets/onetun-${{ matrix.build }}"
             echo "ASSET=onetun-${{ matrix.build }}" >> $GITHUB_ENV
           fi
 
