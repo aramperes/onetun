@@ -1,0 +1,4 @@
+[env]
+# Each interface needs 1 IP allocated to the WireGuard peer IP.
+# "8" = 7 tunnels per protocol.
+SMOLTCP_IFACE_MAX_ADDR_COUNT = "8"

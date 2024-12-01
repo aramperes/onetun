@@ -106,7 +106,9 @@ impl VirtualInterfacePoll for UdpVirtualInterface {
         let mut iface = Interface::new(config, &mut device, Instant::now());
         iface.update_ip_addrs(|ip_addrs| {
             addresses.into_iter().for_each(|addr| {
-                ip_addrs.push(addr).unwrap();
+                ip_addrs
+                    .push(addr)
+                    .expect("maximum number of IPs in UDP interface reached");
             });
         });
 
