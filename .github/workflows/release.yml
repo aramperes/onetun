@@ -75,12 +75,16 @@ jobs:
       RUST_BACKTRACE: 1
     strategy:
       matrix:
-        build: [ linux-amd64, macos-aarch64, windows ]
+        build: [ linux-amd64, linux-aarch64, macos-aarch64, windows ]
         include:
           - build: linux-amd64
             os: ubuntu-latest
             rust: stable
             target: x86_64-unknown-linux-musl
+          - build: linux-aarch64
+            os: ubuntu-latest
+            rust: stable
+            target: aarch64-unknown-linux-musl
           - build: macos-aarch64
             os: macos-latest
             rust: stable
