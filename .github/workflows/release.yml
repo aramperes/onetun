@@ -148,10 +148,10 @@ jobs:
         run: |
           mkdir -p ci/assets
           if [ "${{ matrix.build }}" = "windows" ]; then
-            cp "target/${{ matrix.output }}/release/onetun.exe" "ci/assets/onetun.exe"
+            cp "target/${{ matrix.target }}/release/onetun.exe" "ci/assets/onetun.exe"
             echo "ASSET=onetun.exe" >> $GITHUB_ENV
           else
-            cp "target/${{ matrix.output }}/release/onetun" "ci/assets/onetun-${{ matrix.build }}"
+            cp "target/${{ matrix.target }}/release/onetun" "ci/assets/onetun-${{ matrix.build }}"
             echo "ASSET=onetun-${{ matrix.build }}" >> $GITHUB_ENV
           fi
 
