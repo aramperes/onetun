@@ -129,8 +129,11 @@ jobs:
           echo "RELEASE_UPLOAD_URL=$release_upload_url" >> $GITHUB_ENV
           echo "release upload url: $release_upload_url"
 
+      - name: Install cross
+        run: cargo install cross
+
       - name: Build onetun binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Prepare onetun binary
         shell: bash
