@@ -30,7 +30,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "socket-tcp",
 ] }
 bytes = "1"
-base64 = "0.13"
+base64 = "0.22"
 
 # forward boringtuns tracing events to log
 tracing = { version = "0.1", default-features = false, features = ["log"] }
