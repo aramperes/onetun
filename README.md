@@ -27,7 +27,7 @@ onetun is available to install from [crates.io](https://crates.io/crates/onetun)
 cargo install onetun
 ```
 
-You can also download the binary for Windows, macOS (Intel), and Linux (amd64) from
+You can also download the binary for Windows, macOS (Apple Silicon), and Linux (amd64, arm64) from
 the [Releases](https://github.com/aramperes/onetun/releases) page.
 
 You can also run onetun using [Docker](https://hub.docker.com/r/aramperes/onetun):
@@ -319,4 +319,4 @@ Please consider opening a GitHub issue if you are unsure if your contribution is
 
 ## License
 
-MIT License. See `LICENSE` for details. Copyright &copy; 2023 Aram Peres.
+MIT License. See `LICENSE` for details. Copyright &copy; 2025 Aram Peres.
