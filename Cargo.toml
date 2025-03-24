@@ -36,7 +36,7 @@ base64 = "0.13"
 tracing = { version = "0.1", default-features = false, features = ["log"] }
 
 # bin-only dependencies
-clap = { version = "4.4.11", default-features = false, features = ["suggestions", "std", "env", "help", "wrap_help"], optional = true }
+clap = { version = "4.5.32", default-features = false, features = ["suggestions", "std", "env", "help", "wrap_help"], optional = true }
 pretty_env_logger = { version = "0.5", optional = true }
 async-recursion = "1.0"
 
