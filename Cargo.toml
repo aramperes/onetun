@@ -17,7 +17,7 @@ anyhow = "1"
 tokio = { version = "1", features = [ "rt", "sync", "io-util", "net", "time", "fs", "macros" ] }
 futures = "0.3"
 rand = "0.8"
-nom = "7"
+nom = "8"
 async-trait = "0.1"
 priority-queue = "2.1"
 smoltcp = { version = "0.12", default-features = false, features = [
