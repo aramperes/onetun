@@ -74,7 +74,9 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
 
         // Start TCP Virtual Interface
         let port_forwards = config.port_forwards.clone();
-        let iface = TcpVirtualInterface::new(port_forwards, bus, config.source_peer_ip);
+        let remote_port_forwards = config.remote_port_forwards.clone();
+        let iface = 
+            TcpVirtualInterface::new(port_forwards, remote_port_forwards, bus, config.source_peer_ip);
         tokio::spawn(async move { iface.poll_loop(device).await });
     }
 
