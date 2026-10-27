@@ -214,6 +214,23 @@ impl UdpPortPool {
             })
             .context("Virtual port pool is exhausted")?;
 
+        if let Some(old_peer_addr) = inner.peer_addr_by_port.get(&port).copied() {
+            if old_peer_addr != peer_addr {
+                inner.port_by_peer_addr.remove(&old_peer_addr);
+                let old_peer_ip = old_peer_addr.ip();
+                let remove_peer_usage =
+                    if let Some(usage) = inner.peer_port_usage.get_mut(&old_peer_ip) {
+                        usage.remove(&port);
+                        usage.is_empty()
+                    } else {
+                        false
+                    };
+                if remove_peer_usage {
+                    inner.peer_port_usage.remove(&old_peer_ip);
+                }
+            }
+        }
+
         inner.port_by_peer_addr.insert(peer_addr, port);
         inner.peer_addr_by_port.insert(port, peer_addr);
         Ok(VirtualPort::new(port, PortProtocol::Udp))
@@ -240,6 +257,41 @@ impl UdpPortPool {
 }
 
 /// Non thread-safe inner logic for UDP port pool.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[tokio::test]
+    async fn evicted_peer_does_not_keep_reused_virtual_port() {
+        let pool = UdpPortPool::new();
+        let peer_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let peers: Vec<_> = (20_000..20_000 + PORTS_PER_IP as u16 + 1)
+            .map(|port| SocketAddr::new(peer_ip, port))
+            .collect();
+        let mut virtual_ports = Vec::with_capacity(peers.len());
+
+        for peer in &peers {
+            let virtual_port = pool.next(*peer).await.unwrap();
+            pool.update_last_transmit(virtual_port).await;
+            virtual_ports.push(virtual_port);
+        }
+
+        let reused_port = virtual_ports[0];
+        assert_eq!(
+            pool.get_peer_addr(reused_port).await,
+            Some(peers[PORTS_PER_IP])
+        );
+
+        let reassigned_port = pool.next(peers[0]).await.unwrap();
+        assert_ne!(reassigned_port, reused_port);
+        assert_eq!(
+            pool.get_peer_addr(reused_port).await,
+            Some(peers[PORTS_PER_IP])
+        );
+    }
+}
+
 #[derive(Debug, Default)]
 struct UdpPortPoolInner {
     /// Remaining ports in the pool.
